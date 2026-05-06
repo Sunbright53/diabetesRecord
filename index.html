@@ -289,11 +289,20 @@
     <!-- ========== CRITICAL DKA EMERGENCY OVERLAY ========== -->
     <div id="dkaOverlay">
         <div class="dka-icon"><i class="fa-solid fa-triangle-exclamation"></i></div>
-        <div class="dka-title">⚠ CRITICAL DKA ALERT</div>
+        <div class="dka-title">⚠ CRITICAL ALERT</div>
+        <!-- OLD GLUCOSE DISPLAY CODE (kept for rollback)
         <div class="dka-reading" id="dkaGlucoseValue">---</div>
         <div style="color:rgba(255,220,220,0.8);font-size:1rem;font-weight:700;letter-spacing:0.1em;">mg/dL — Dangerously High</div>
         <div class="dka-subtitle">
             Estimated glucose exceeds <strong>250 mg/dL</strong>. This may indicate Diabetic Ketoacidosis.
+            Seek <strong>immediate medical attention</strong>.
+        </div>
+        -->
+        <!-- NEW METABOLIC STATE DISPLAY CODE -->
+        <div class="dka-reading" id="dkaGlucoseValue">---</div>
+        <div style="color:rgba(255,220,220,0.8);font-size:1rem;font-weight:700;letter-spacing:0.1em;">% — Critically Elevated</div>
+        <div class="dka-subtitle">
+            Estimated Metabolic State exceeds <strong>critical threshold</strong>. This may indicate a high-risk metabolic condition.
             Seek <strong>immediate medical attention</strong>.
         </div>
         <button class="sos-btn" onclick="triggerSOS()">
@@ -571,6 +580,13 @@
                     <p class="text-[10px] font-bold text-emerald-500 uppercase tracking-wider text-center"><i
                             class="fa-solid fa-brain"></i> AI Federated Learning Active</p>
 
+                    <!-- NEW METABOLIC STATE DISPLAY CODE: Patient ID input for operator workflow -->
+                    <div class="bg-slate-800 border border-slate-700 rounded-lg p-3">
+                        <label class="block text-xs text-slate-400 mb-1">Patient ID</label>
+                        <input type="number" id="patientIdInput" min="1" placeholder="e.g. 1, 2, 3..."
+                            class="w-full bg-slate-900 border border-slate-600 text-white text-sm rounded-lg p-2 focus:outline-none focus:ring-1 focus:ring-emerald-500 font-mono" />
+                    </div>
+
                     <button id="btnCollectRaw"
                         class="w-full bg-slate-800 hover:bg-slate-700 rounded-lg p-3 flex items-center justify-between transition-colors border border-slate-700 group">
                         <div class="text-left">
@@ -661,11 +677,21 @@
 
                             <div class="flex flex-col justify-center items-center z-10 py-3">
                                 <div class="flex items-baseline gap-2">
+                                    <!-- OLD GLUCOSE DISPLAY CODE (kept for rollback)
                                     <div class="text-6xl font-black tracking-tighter text-slate-800 transition-colors duration-300"
                                         id="valGlucose">--.-</div>
                                     <div class="text-lg font-bold text-slate-400">mg/dL</div>
+                                    -->
+                                    <!-- NEW METABOLIC STATE DISPLAY CODE -->
+                                    <div class="text-6xl font-black tracking-tighter text-slate-800 transition-colors duration-300"
+                                        id="valGlucose">--.-</div>
+                                    <div class="text-lg font-bold text-slate-400">%</div>
                                 </div>
+                                <!-- OLD GLUCOSE DISPLAY CODE (kept for rollback)
                                 <div class="text-sm font-medium text-slate-500 mt-1">Estimated Capillary Glucose</div>
+                                -->
+                                <!-- NEW METABOLIC STATE DISPLAY CODE -->
+                                <div class="text-sm font-medium text-slate-500 mt-1">Estimated Metabolic State (%)</div>
                                 <div id="typeLabel" class="mt-2 text-xs font-bold px-3 py-1 rounded-full hidden"></div>
                             </div>
 
@@ -901,7 +927,11 @@
                                         <th class="px-6 py-4 border-b">Date / Time</th>
                                         <th class="px-6 py-4 border-b">Mode</th>
                                         <th class="px-6 py-4 border-b">Peak VOC / Hum. / Temp.</th>
+                                        <!-- OLD GLUCOSE DISPLAY CODE (kept for rollback)
                                         <th class="px-6 py-4 border-b">Est. Glucose</th>
+                                        -->
+                                        <!-- NEW METABOLIC STATE DISPLAY CODE -->
+                                        <th class="px-6 py-4 border-b">Est. Metabolic State (%)</th>
                                         <th class="px-6 py-4 border-b">AI Diagnostic</th>
                                         <th class="px-6 py-4 border-b text-center">Delete</th>
                                     </tr>
@@ -1106,11 +1136,19 @@
                 </div>
                 <div class="glass-panel p-4 text-center">
                     <div class="text-2xl font-black text-rose-600" id="statCritical">—</div>
+                    <!-- OLD GLUCOSE DISPLAY CODE (kept for rollback)
                     <div class="text-xs text-slate-500 mt-1">Critical (>250 mg/dL)</div>
+                    -->
+                    <!-- NEW METABOLIC STATE DISPLAY CODE -->
+                    <div class="text-xs text-slate-500 mt-1">Critical (High Metabolic State)</div>
                 </div>
                 <div class="glass-panel p-4 text-center">
                     <div class="text-2xl font-black text-amber-500" id="statWarning">—</div>
+                    <!-- OLD GLUCOSE DISPLAY CODE (kept for rollback)
                     <div class="text-xs text-slate-500 mt-1">High Risk (>140 mg/dL)</div>
+                    -->
+                    <!-- NEW METABOLIC STATE DISPLAY CODE -->
+                    <div class="text-xs text-slate-500 mt-1">High Risk (Elevated Metabolic State)</div>
                 </div>
                 <div class="glass-panel p-4 text-center">
                     <div class="text-2xl font-black text-emerald-600" id="statNormal">—</div>
@@ -1590,8 +1628,8 @@
             patients.forEach(({ logs }) => {
                 if (logs.length === 0) { normal++; return; }
                 const latest = parseFloat(logs[0].glucose);
-                if (latest > 250) critical++;
-                else if (latest > 140) warning++;
+                if (latest > 85) critical++;
+                else if (latest > 50) warning++;
                 else normal++;
             });
             document.getElementById('statTotalPatients').textContent = patients.length;
@@ -1603,9 +1641,9 @@
         function getRiskBadge(glucose) {
             if (!glucose || isNaN(glucose)) return '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-500">No data</span>';
             const g = parseFloat(glucose);
-            if (g > 250) return `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-700 border border-rose-200">Critical ${g.toFixed(0)} mg/dL</span>`;
-            if (g > 140) return `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700 border border-amber-200">High ${g.toFixed(0)} mg/dL</span>`;
-            return `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700 border border-emerald-200">Normal ${g.toFixed(0)} mg/dL</span>`;
+            if (g > 85) return `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-700 border border-rose-200">Critical ${g.toFixed(0)}%</span>`;
+            if (g > 50) return `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700 border border-amber-200">High ${g.toFixed(0)}%</span>`;
+            return `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700 border border-emerald-200">Normal ${g.toFixed(0)}%</span>`;
         }
 
         function renderPatientList(patients) {
@@ -1628,7 +1666,7 @@
                     ? logs.map(l => `
                         <tr class="hover:bg-slate-50">
                             <td class="px-4 py-2 text-xs text-slate-500 font-mono whitespace-nowrap">${l.timestamp || '—'}</td>
-                            <td class="px-4 py-2 text-xs font-bold text-slate-700">${parseFloat(l.glucose).toFixed(1)} mg/dL</td>
+                            <td class="px-4 py-2 text-xs font-bold text-slate-700">${parseFloat(l.glucose).toFixed(1)}%</td>
                             <td class="px-4 py-2 text-xs">${getRiskBadge(l.glucose)}</td>
                             <td class="px-4 py-2 text-xs text-slate-500">${parseFloat(l.peakPPM || 0).toFixed(2)} ppm</td>
                             <td class="px-4 py-2 text-xs text-slate-500">${parseFloat(l.humidity || 0).toFixed(1)}% RH</td>
@@ -2326,13 +2364,13 @@
                         legend: { position: 'bottom', labels: { boxWidth: 12, padding: 16 } },
                         tooltip: {
                             callbacks: {
-                                label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y?.toFixed(1) ?? ''} mg/dL`
+                                label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y?.toFixed(1) ?? ''}%`
                             }
                         }
                     },
                     scales: {
                         y: {
-                            title: { display: true, text: 'Est. Glucose (mg/dL)', font: { size: 11 } },
+                            title: { display: true, text: 'Metabolic State (%)', font: { size: 11 } },
                             ticks: { callback: v => v + '' }
                         },
                         x: { ticks: { maxTicksLimit: 8, maxRotation: 30 } }
@@ -2357,8 +2395,8 @@
             const n = allLogs.length;
 
             // Compute peak/high readings for pattern detection
-            const highReadings = allLogs.filter(l => parseFloat(l.glucose) > 180).length;
-            const criticalReadings = allLogs.filter(l => parseFloat(l.glucose) > 250).length;
+            const highReadings = allLogs.filter(l => parseFloat(l.glucose) > 65).length;
+            const criticalReadings = allLogs.filter(l => parseFloat(l.glucose) > 85).length;
             const highRatio = n > 0 ? highReadings / n : 0;
 
             let recs = [];
@@ -2367,15 +2405,15 @@
             if (n === 0) {
                 recs.push({ icon: '🫁', text: `No breath data yet. <strong>Please exhale into the device</strong> to begin real AI analysis. Currently using demographic baseline only.` });
             } else {
-                recs.push({ icon: '📊', text: `Analyzed <strong>${n} saved reading${n>1?'s':''}</strong> across sessions. Current avg: <strong>${parseFloat(currentBase).toFixed(1)} mg/dL</strong>. ${criticalReadings > 0 ? `<span class="text-rose-600 font-bold">${criticalReadings} critical spike${criticalReadings>1?'s':''} detected.</span>` : ''}` });
+                recs.push({ icon: '📊', text: `Analyzed <strong>${n} saved reading${n>1?'s':''}</strong> across sessions. Current avg: <strong>${parseFloat(currentBase).toFixed(1)}%</strong>. ${criticalReadings > 0 ? `<span class="text-rose-600 font-bold">${criticalReadings} critical spike${criticalReadings>1?'s':''} detected.</span>` : ''}` });
             }
 
             // ── Trend assessment ──
             if (n >= 4) {
                 if (trend > 5) {
-                    recs.push({ icon: '⚠️', text: `<strong>Rising trend detected (+${trend.toFixed(1)} mg/dL shift).</strong> VOC acetone is climbing across sessions — consider dietary review or clinical consultation.` });
+                    recs.push({ icon: '⚠️', text: `<strong>Rising trend detected (+${trend.toFixed(1)}% shift).</strong> VOC acetone is climbing across sessions — consider dietary review or clinical consultation.` });
                 } else if (trend < -5) {
-                    recs.push({ icon: '✅', text: `<strong>Improving trend detected (${trend.toFixed(1)} mg/dL shift).</strong> Acetone levels are declining — your current lifestyle changes are working.` });
+                    recs.push({ icon: '✅', text: `<strong>Improving trend detected (${trend.toFixed(1)}% shift).</strong> Acetone levels are declining — your current lifestyle changes are working.` });
                 } else {
                     recs.push({ icon: '📈', text: `Glucose trajectory is <strong>stable</strong> across your readings. Continue monitoring regularly for early detection.` });
                 }
@@ -2383,7 +2421,7 @@
 
             // ── Spike pattern ──
             if (highRatio > 0.4) {
-                recs.push({ icon: '🔴', text: `<strong>${Math.round(highRatio*100)}% of readings exceed 180 mg/dL.</strong> Frequent spikes suggest post-meal acetone elevation. Test more in fasted state (morning, 2+ hrs after meals).` });
+                recs.push({ icon: '🔴', text: `<strong>${Math.round(highRatio*100)}% of readings exceed 65% metabolic state.</strong> Frequent spikes suggest post-meal acetone elevation. Test more in fasted state (morning, 2+ hrs after meals).` });
             }
 
             // ── BMI ──
@@ -2397,8 +2435,8 @@
             if (p.status === 'type1') {
                 recs.push({ icon: '💉', text: `Known T1D: Monitor for ketoacidosis if acetone PPM spikes unexpectedly without high glucose — this can indicate insulin deficiency rather than hyperglycemia.` });
             } else if (p.status === 'type2') {
-                recs.push({ icon: '💊', text: `T2D Management: Medication adherence directly lowers fasting acetone. ${currentBase > 160 ? 'Current levels suggest sub-optimal glucose control — consult your clinician.' : 'Levels look manageable — maintain current regimen.'}` });
-            } else if (p.status === 'prediabetes' || currentBase > 120) {
+                recs.push({ icon: '💊', text: `T2D Management: Medication adherence directly lowers fasting acetone. ${currentBase > 60 ? 'Current levels suggest sub-optimal metabolic control — consult your clinician.' : 'Levels look manageable — maintain current regimen.'}` });
+            } else if (p.status === 'prediabetes' || currentBase > 45) {
                 recs.push({ icon: '🥗', text: `Pre-diabetes range: Reduce refined carbs at dinner to lower fasting acetone measured in morning breath. Regular 30-min walks can reduce VOC readings significantly.` });
             }
 
@@ -2409,10 +2447,10 @@
 
             // ── HbA1c correlation ──
             if (p.hba1c && n >= 3) {
-                const expectedFromHba1c = (p.hba1c * 28.7) - 46.7; // IFCC formula approximation
+                const expectedFromHba1c = glucoseToMetabolicScore((p.hba1c * 28.7) - 46.7); // IFCC eAG, mapped to metabolic %
                 const diff = currentBase - expectedFromHba1c;
-                if (Math.abs(diff) > 25) {
-                    recs.push({ icon: '🔬', text: `Breath acetone avg (${currentBase.toFixed(0)} mg/dL) diverges from HbA1c-implied glucose (${expectedFromHba1c.toFixed(0)} mg/dL). ${diff > 0 ? 'Post-prandial spikes may be inflating breath readings.' : 'Fasting-state readings may underrepresent daily glucose load.'}` });
+                if (Math.abs(diff) > 12) {
+                    recs.push({ icon: '🔬', text: `Breath acetone avg (${currentBase.toFixed(0)}%) diverges from HbA1c-implied metabolic state (${expectedFromHba1c.toFixed(0)}%). ${diff > 0 ? 'Post-prandial spikes may be inflating breath readings.' : 'Fasting-state readings may underrepresent daily metabolic load.'}` });
                 }
             }
 
@@ -2539,7 +2577,12 @@
             _chartDirty = true; scheduleChartUpdate();
 
             if (STATE.isCollectingRawData) {
-                STATE.rawTimeLog.push({ timestamp: new Date().toISOString(), pressure: pressure.toFixed(4), rawVolt: mqVolt.toFixed(4), vocPpm: normalizedVOC.toFixed(4), humidity: humidity.toFixed(2), temperature: temperature.toFixed(1), isBlowing: pressure > CONFIG.PRESSURE_THRESHOLD ? 1 : 0 });
+                // OLD GLUCOSE DISPLAY CODE (kept for rollback)
+                // STATE.rawTimeLog.push({ timestamp: new Date().toISOString(), pressure: pressure.toFixed(4), rawVolt: mqVolt.toFixed(4), vocPpm: normalizedVOC.toFixed(4), humidity: humidity.toFixed(2), temperature: temperature.toFixed(1), isBlowing: pressure > CONFIG.PRESSURE_THRESHOLD ? 1 : 0 });
+                // NEW METABOLIC STATE DISPLAY CODE: Use Bangkok local time (Asia/Bangkok)
+                const _now = new Date();
+                const bangkokTs = _now.toLocaleString('sv-SE', { timeZone: 'Asia/Bangkok' }); // sv-SE gives YYYY-MM-DD HH:MM:SS, no commas
+                STATE.rawTimeLog.push({ timestamp: bangkokTs, pressure: pressure.toFixed(4), rawVolt: mqVolt.toFixed(4), vocPpm: normalizedVOC.toFixed(4), humidity: humidity.toFixed(2), temperature: temperature.toFixed(1), isBlowing: pressure > CONFIG.PRESSURE_THRESHOLD ? 1 : 0 });
                 document.getElementById('csvCount').textContent = STATE.rawTimeLog.length;
             }
 
@@ -2570,9 +2613,13 @@
                     addLogEntry(duration, STATE.currentExhale.maxPpm, avgHum, avgTemp, aiResult.glucose, aiResult.riskClass, aiResult.subType);
                     updatePredictionChart(); // <--- Update Analytics Tab with fresh Real Data
 
-                    if (aiResult.glucose > 250) showDKAOverlay(aiResult.glucose);
-                    else if (aiResult.glucose > 200) showAlert('⚠ Critical Glucose Threshold', `Est. Glucose at ${aiResult.glucose.toFixed(1)} mg/dL — seek immediate medical check.`, 'danger');
-                    else if (aiResult.glucose > 140) showAlert('Pre-Diabetes Warning', `Est. Glucose at ${aiResult.glucose.toFixed(1)} mg/dL — elevated VOC detected.`, 'warning');
+                    if (aiResult.glucose > 85) showDKAOverlay(aiResult.glucose);
+                    // OLD GLUCOSE DISPLAY CODE (kept for rollback)
+                    // else if (aiResult.glucose > 200) showAlert('⚠ Critical Glucose Threshold', `Est. Glucose at ${aiResult.glucose.toFixed(1)} mg/dL — seek immediate medical check.`, 'danger');
+                    // else if (aiResult.glucose > 140) showAlert('Pre-Diabetes Warning', `Est. Glucose at ${aiResult.glucose.toFixed(1)} mg/dL — elevated VOC detected.`, 'warning');
+                    // NEW METABOLIC STATE DISPLAY CODE
+                    else if (aiResult.glucose > 70) showAlert('⚠ Critical Metabolic State', `Estimated Metabolic State at ${aiResult.glucose.toFixed(1)}% — seek immediate medical check.`, 'danger');
+                    else if (aiResult.glucose > 50) showAlert('Elevated Metabolic State', `Estimated Metabolic State at ${aiResult.glucose.toFixed(1)}% — elevated VOC detected.`, 'warning');
 
                     publishMQTT({ patientId: STATE.patientProfile.username, bmi: STATE.patientProfile.bmi, glucose: aiResult.glucose, risk: aiResult.riskClass, timestamp: new Date().toISOString() });
                 } else {
@@ -2607,6 +2654,35 @@
             return Math.max(0, Math.min(finalPPM, 1000));
         }
 
+        function clampValue(value, min, max) {
+            return Math.max(min, Math.min(max, value));
+        }
+
+        function glucoseToMetabolicScore(glucoseEstimate) {
+            const anchors = [
+                { glucose: 60, score: 0 },
+                { glucose: 80, score: 12 },
+                { glucose: 100, score: 25 },
+                { glucose: 125, score: 42 },
+                { glucose: 140, score: 52 },
+                { glucose: 180, score: 68 },
+                { glucose: 220, score: 82 },
+                { glucose: 250, score: 90 },
+                { glucose: 320, score: 100 }
+            ];
+
+            if (glucoseEstimate <= anchors[0].glucose) return anchors[0].score;
+            for (let i = 1; i < anchors.length; i++) {
+                const low = anchors[i - 1];
+                const high = anchors[i];
+                if (glucoseEstimate <= high.glucose) {
+                    const ratio = (glucoseEstimate - low.glucose) / (high.glucose - low.glucose);
+                    return low.score + ratio * (high.score - low.score);
+                }
+            }
+            return 100;
+        }
+
         function runHybridAIInference(peakAcetone, avgHumidity, avgTemperature = 25.0) {
     let ageFactor = Math.max(0, (STATE.patientProfile.age - 40) * 0.01);
     let genderFactor = STATE.patientProfile.gender === 'male' ? 0.05 : 0.02;
@@ -2627,21 +2703,23 @@
     if (estimatedGlucose < 70) estimatedGlucose = 70 + (Math.random() * 10);
     if (estimatedGlucose > 500) estimatedGlucose = 500;
 
+    const metabolicState = clampValue(glucoseToMetabolicScore(estimatedGlucose), 0, 100);
+
     let riskClass = 'Normal', subType = null;
 
     if (STATE.mode === 'screening') {
-        if (estimatedGlucose > 200) {
+        if (metabolicState > 70) {
             riskClass = 'High Risk';
             subType = STATE.patientProfile.age < 30 ? 'Suspected Type 1' : 'Suspected Type 2';
-        } else if (estimatedGlucose > 140) {
+        } else if (metabolicState > 50) {
             riskClass = 'Pre-Diabetes';
         }
     } else {
-        riskClass = estimatedGlucose > 180 ? 'Spike Detected' : 'Stable';
+        riskClass = metabolicState > 65 ? 'Spike Detected' : 'Stable';
         subType = STATE.patientProfile.status === 'type1' ? 'Known Type 1' : (STATE.patientProfile.status === 'type2' ? 'Known Type 2' : 'Unspecified');
     }
 
-    return { glucose: estimatedGlucose, riskClass, subType, confidence: 95.5 - (Math.random() * 3) };
+    return { glucose: metabolicState, riskClass, subType, confidence: 95.5 - (Math.random() * 3) };
 }
 
         function updateDiagnosticUI(glucose, riskClass, subType, confidence) {
@@ -2842,11 +2920,59 @@
             }
         });
 
+        function csvTimestampCell(timestamp) {
+            const rawTime = String(timestamp ?? '');
+            const parsedTime = new Date(timestamp).toLocaleString('sv-SE', { timeZone: 'Asia/Bangkok' });
+            const cleanTime = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(rawTime)
+                ? rawTime
+                : (parsedTime === 'Invalid Date' ? rawTime : parsedTime);
+            return `="${cleanTime.replace(/"/g, '""')}"`;
+        }
+
+        function rawLogRowToCsv(row) {
+            return [
+                csvTimestampCell(row.timestamp),
+                row.pressure,
+                row.rawVolt,
+                row.vocPpm,
+                row.humidity,
+                row.temperature || '',
+                row.isBlowing
+            ].join(',');
+        }
+
         document.getElementById('btnCollectRaw').addEventListener('click', () => {
             STATE.isCollectingRawData = !STATE.isCollectingRawData;
             const textEl = document.getElementById('textCollectRaw');
-            if (STATE.isCollectingRawData) { textEl.textContent = 'Recording...'; textEl.classList.replace('text-blue-400', 'text-rose-400'); }
-            else { textEl.textContent = 'Start Collect'; textEl.classList.replace('text-rose-400', 'text-blue-400'); }
+            if (STATE.isCollectingRawData) {
+                // Record → start recording as normal
+                textEl.textContent = 'Recording...';
+                textEl.classList.replace('text-blue-400', 'text-rose-400');
+            } else {
+                // Stop → stop recording, export CSV automatically
+                textEl.textContent = 'Start Collect';
+                textEl.classList.replace('text-rose-400', 'text-blue-400');
+
+                // NEW METABOLIC STATE DISPLAY CODE: Auto-export CSV on Stop with Patient ID and Bangkok time
+                if (STATE.rawTimeLog.length > 0) {
+                    const patientId = document.getElementById('patientIdInput').value.trim() || '0';
+                    const filename = `Patient_${patientId}.csv`;
+
+                    // Build CSV with Bangkok local time (Asia/Bangkok = UTC+7)
+                    let csvContent = "Timestamp,Pressure_mmHg,Raw_Voltage_V,VOC_PPM,Humidity_RH,Temperature_C,Is_Blowing\n";
+                    STATE.rawTimeLog.forEach(row => { csvContent += rawLogRowToCsv(row) + "\n"; });
+
+                    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                    const link = document.createElement("a");
+                    link.href = URL.createObjectURL(blob);
+                    link.download = filename;
+                    link.click();
+
+                    // Clear logs for next patient
+                    STATE.rawTimeLog = [];
+                    document.getElementById('csvCount').textContent = '0';
+                }
+            }
         });
 
         // ==========================================
@@ -2891,11 +3017,21 @@
 
         document.getElementById('btnExportCSV').addEventListener('click', () => {
             if (STATE.rawTimeLog.length === 0) return alert("No data recorded yet.");
+            // OLD GLUCOSE DISPLAY CODE (kept for rollback)
+            // let csvContent = "Timestamp,Pressure_mmHg,Raw_Voltage_V,VOC_PPM,Humidity_RH,Temperature_C,Is_Blowing\n";
+            // STATE.rawTimeLog.forEach(row => { csvContent += `${row.timestamp},${row.pressure},${row.rawVolt},${row.vocPpm},${row.humidity},${row.temperature || ''},${row.isBlowing}\n`; });
+            // const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            // const link = document.createElement("a"); link.href = URL.createObjectURL(blob);
+            // link.download = `sbd_dataset_${new Date().getTime()}.csv`; link.click();
+
+            // NEW METABOLIC STATE DISPLAY CODE: Export with Patient ID filename and Bangkok time
+            const patientId = document.getElementById('patientIdInput').value.trim() || '0';
+            const filename = `Patient_${patientId}.csv`;
             let csvContent = "Timestamp,Pressure_mmHg,Raw_Voltage_V,VOC_PPM,Humidity_RH,Temperature_C,Is_Blowing\n";
-            STATE.rawTimeLog.forEach(row => { csvContent += `${row.timestamp},${row.pressure},${row.rawVolt},${row.vocPpm},${row.humidity},${row.temperature || ''},${row.isBlowing}\n`; });
+            STATE.rawTimeLog.forEach(row => { csvContent += rawLogRowToCsv(row) + "\n"; });
             const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
             const link = document.createElement("a"); link.href = URL.createObjectURL(blob);
-            link.download = `sbd_dataset_${new Date().getTime()}.csv`; link.click();
+            link.download = filename; link.click();
         });
 
     </script>
