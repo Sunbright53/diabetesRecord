@@ -2862,7 +2862,7 @@
                 document.getElementById('btnConnect').innerHTML = '<i class="fa-solid fa-link-slash"></i> Disconnect';
 
                 const decoder = new TextDecoderStream();
-                serialPort.readable.pipeTo(decoder.writable);
+                serialPort.readable.pipeTo(decoder.writable).catch(() => {});
                 serialReader = decoder.readable.getReader();
 
                 let buffer = "";
@@ -2877,7 +2877,7 @@
                             line = line.trim(); if (!line) continue;
                             // Try JSON first (new ESP32 firmware: {"status":"BLOW","pressure":X,"volt":X,"humidity":X})
                             try {
-                                const json = JSON.parse(line);
+                                const json = JSON.parse(line.startsWith('DATA:') ? line.slice(5) : line);
                                 if (typeof json.pressure !== 'undefined') {
                                     const pressure = parseFloat(json.pressure) || 0;
                                     const volt = parseFloat(json.volt) || 0;
