@@ -2619,7 +2619,10 @@
     function updateLiveTrendPreview() {
       if (!STATE.activeBreath || !STATE.activeBreath.frames.length) return;
       const frames = STATE.activeBreath.frames;
-      const deltas = frames.map((f) => f.vocDelta).filter((n) => n >= 0);
+      const allLiveDeltas = frames.map((f) => f.vocDelta).filter((n) => n >= 0);
+      const deltas = allLiveDeltas.filter((n) => n > CONFIG.vocStartThreshold).length >= 2
+        ? allLiveDeltas.filter((n) => n > CONFIG.vocStartThreshold)
+        : allLiveDeltas.filter((n) => n > 0).length ? allLiveDeltas.filter((n) => n > 0) : allLiveDeltas;
       const pressures = frames.map((f) => f.pressure).filter((n) => n > 0);
       const liveDelta = Math.max(0, Math.round(median(deltas.slice(-8)) || Math.max(0, ...deltas)));
       const livePressure = average(pressures.slice(-8)) || 0;
@@ -2660,7 +2663,11 @@
       const last = frames[frames.length - 1];
       const duration = Math.max(0.1, (last.ts - first.ts) / 1000);
       const pressures = frames.map((f) => f.pressure).filter((n) => n > 0);
-      const deltas = frames.map((f) => f.vocDelta).filter((n) => n >= 0);
+      // Exclude near-zero ramp-up frames so median reflects real breath VOC, not idle noise
+      const allDeltas = frames.map((f) => f.vocDelta).filter((n) => n >= 0);
+      const deltas = allDeltas.filter((n) => n > CONFIG.vocStartThreshold).length >= 3
+        ? allDeltas.filter((n) => n > CONFIG.vocStartThreshold)
+        : allDeltas.filter((n) => n > 0).length ? allDeltas.filter((n) => n > 0) : allDeltas;
       const vocRawValues = frames.map((f) => f.vocRaw).filter(Number.isFinite);
       const avgPressure = average(pressures) || 0;
       const peakPressure = Math.max(0, ...pressures);
@@ -3333,27 +3340,58 @@
     function runDemoCheck() {
       startGuidedCheck();
       let round = 0;
+
+      const sendIdle = (idleRaw) => {
+        handlePacket(normalizePacket({
+          status: "IDLE", pressure: 0, voc_digital: 0,
+          voc_raw: idleRaw, voc_volt: 1.65,
+          humidity: 48, temperature: 27, dht_valid: true, env_source: "demo"
+        }, "Demo"));
+      };
+
       const runRound = () => {
         if (round >= 3) return;
         const idleRaw = 2040 + Math.random() * 40;
-        handlePacket(normalizePacket({ status: "IDLE", pressure: 0, voc_digital: 0, voc_raw: idleRaw, voc_volt: 1.65, humidity: 48, temperature: 27, dht_valid: true, env_source: "demo" }, "Demo"));
+        // Send a couple of IDLE packets first so ambient baseline builds
+        sendIdle(idleRaw);
+        sendIdle(idleRaw);
+
         let frame = 0;
         const frames = 34 + Math.floor(Math.random() * 10);
-        const trendBump = round === 2 ? 90 : 0;
+        // All rounds produce realistic deltas in 180–280 range (score ~35–54, Moderate)
+        const baseVoc = 190 + round * 15 + Math.random() * 30;
+
         const interval = setInterval(() => {
           frame++;
-          const x = frame / frames;
+          // Use (frame-0.5)/frames so x starts near 0.01 not 0 — avoids sin(0)≈0 giving zero delta
+          const x = (frame - 0.5) / frames;
           const pressure = Math.sin(Math.PI * x) * (9 + Math.random() * 2.8) + 2.6;
-          const delta = Math.max(0, 150 + trendBump + Math.sin(Math.PI * x) * 95 + Math.random() * 22);
-          handlePacket(normalizePacket({ status: "BLOW", pressure, voc_digital: delta, voc_raw: idleRaw - delta, voc_volt: 1.4, humidity: 49, temperature: 27.2, dht_valid: true, env_source: "demo" }, "Demo"));
+          // VOC delta: bell shape starting at baseVoc/2 so median is well above zero
+          const delta = Math.max(10, baseVoc * (0.45 + 0.55 * Math.sin(Math.PI * x)) + Math.random() * 22);
+          handlePacket(normalizePacket({
+            status: "BLOW", pressure, voc_digital: Math.round(delta),
+            voc_raw: idleRaw - delta, voc_volt: 1.4,
+            humidity: 49, temperature: 27.2, dht_valid: true, env_source: "demo"
+          }, "Demo"));
+
           if (frame >= frames) {
             clearInterval(interval);
-            handlePacket(normalizePacket({ status: "IDLE", pressure: 0, voc_digital: 0, voc_raw: idleRaw, voc_volt: 1.65, humidity: 48, temperature: 27, dht_valid: true, env_source: "demo" }, "Demo"));
-            round++;
-            setTimeout(runRound, 850);
+            // Send several IDLE packets spaced 120 ms apart so grace period (400 ms) expires
+            // and processBreathFrame finalizes the sample reliably
+            let idleCount = 0;
+            const idleInterval = setInterval(() => {
+              sendIdle(idleRaw);
+              idleCount++;
+              if (idleCount >= 5) {
+                clearInterval(idleInterval);
+                round++;
+                setTimeout(runRound, 600);
+              }
+            }, 120);
           }
         }, 100);
       };
+
       runRound();
     }
 
