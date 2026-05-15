@@ -1948,8 +1948,8 @@
 
     const CONFIG = {
       mqttTopic: "siit/med/breath/waranyu.arty",
-      pressureStart: 2.5,
-      pressureRelease: 1.2,
+      pressureStart: 2.0,       // matches firmware PRESSURE_START_THRESHOLD
+      pressureRelease: 0.8,     // matches firmware PRESSURE_RELEASE_THRESHOLD
       minBreathDuration: 0.8,
       minBreathFrames: 5,
       vocStartThreshold: 8,
@@ -2557,27 +2557,48 @@
 
     function processBreathFrame(packet) {
       const blowing = isBreathPacket(packet);
-      const ended = !blowing && (packet.pressure <= CONFIG.pressureRelease || packet.status === "IDLE");
 
       if (blowing) {
         if (!STATE.activeBreath) {
-          STATE.activeBreath = { startedAt: packet.ts, frames: [] };
+          STATE.activeBreath = { startedAt: packet.ts, frames: [], endedAt: null };
           $("breathProgressText").textContent = "Blowing";
           $("breathProgressText").className = "chip green";
         }
+        // While actively blowing, track the last valid (non-zero) VOC delta
+        if (packet.vocDelta > 0) STATE.activeBreath.lastVocDelta = packet.vocDelta;
         STATE.activeBreath.frames.push(packet);
         updateBreathProgress();
         updateLiveTrendPreview();
         return;
       }
 
-      if (ended && STATE.activeBreath && STATE.activeBreath.frames.length) {
-        const sample = finalizeBreath(STATE.activeBreath.frames);
-        STATE.activeBreath = null;
-        $("breathProgressBar").style.width = "0%";
-        $("breathProgressText").textContent = "Idle";
-        $("breathProgressText").className = "chip blue";
-        handleSample(sample);
+      // Not blowing — check if we're in the grace window (300 ms after blow ends)
+      if (STATE.activeBreath) {
+        if (!STATE.activeBreath.endedAt) STATE.activeBreath.endedAt = packet.ts;
+        const gracePeriodMs = 400;
+        const msSinceEnd = packet.ts - STATE.activeBreath.endedAt;
+
+        // During grace period: patch in held VOC so frames stay useful, keep accumulating
+        if (msSinceEnd < gracePeriodMs) {
+          const held = STATE.activeBreath.lastVocDelta || 0;
+          if (packet.vocDelta === 0 && held > 0) {
+            packet = { ...packet, vocDelta: held };
+          }
+          STATE.activeBreath.frames.push(packet);
+          return;
+        }
+
+        // Grace period over — finalize
+        if (STATE.activeBreath.frames.length) {
+          const sample = finalizeBreath(STATE.activeBreath.frames);
+          STATE.activeBreath = null;
+          $("breathProgressBar").style.width = "0%";
+          $("breathProgressText").textContent = "Idle";
+          $("breathProgressText").className = "chip blue";
+          handleSample(sample);
+        } else {
+          STATE.activeBreath = null;
+        }
       }
     }
 
