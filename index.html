@@ -6,6 +6,7 @@
   <title>Breath VOC Metabolic Wellness Companion</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
+
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
@@ -937,8 +938,8 @@
         Register a role, answer the health context questionnaire, connect the ESP32 MQTT stream,
         and send an MCP-style health context package to the LLM for personalized, safety-first feedback.
       </p>
-      <div class="notice safety">
-        Local demo auth is stored on this browser. For production, move accounts, API keys, and LLM calls to a secure backend.
+      <div class="notice safety" id="firebaseStatusNotice">
+        🔥 Connecting to Firebase… Accounts are global across all devices.
       </div>
     </div>
 
@@ -1462,13 +1463,20 @@
                   You can enter an API key here for local demo analysis. For real deployment, use a backend proxy because browser keys can be exposed to anyone using the page.
                 </div>
                 <div class="field">
-                  <label>OpenAI API key</label>
+                  <label id="apiKeyLabel">OpenAI API key</label>
                   <div class="secret-row">
-                    <input id="openaiApiKey" type="password" placeholder="sk-..." autocomplete="off" />
+                    <input id="openaiApiKey" type="password" placeholder="sk-... or AIza..." autocomplete="off" />
                     <button class="btn ghost" id="btnToggleKey" type="button"><i class="fa-solid fa-eye"></i> Show</button>
                   </div>
                 </div>
                 <div class="grid two">
+                  <div class="field">
+                    <label>AI Provider</label>
+                    <select id="aiProvider" onchange="onProviderChange()">
+                      <option value="openai">OpenAI (paid key required)</option>
+                      <option value="gemini">Gemini (free 1500 req/day)</option>
+                    </select>
+                  </div>
                   <div class="field">
                     <label>Model</label>
                     <select id="openaiModel">
@@ -1478,14 +1486,17 @@
                       <option value="gpt-4.1-mini">gpt-4.1-mini</option>
                       <option value="gpt-4.1">gpt-4.1</option>
                     </select>
+                    <select id="geminiModel" style="display:none;">
+                      <option value="gemini-1.5-flash">gemini-1.5-flash (free, 1500/day)</option>
+                      <option value="gemini-1.5-pro">gemini-1.5-pro (free, 50/day)</option>
+                      <option value="gemini-2.0-flash">gemini-2.0-flash (free, 1500/day)</option>
+                    </select>
                   </div>
                   <div class="field">
                     <label>Key storage</label>
-                    <select id="apiKeyStorage">
-                      <option value="session">Session only</option>
-                      <option value="local">Remember on this browser</option>
-                      <option value="none">Do not store</option>
-                    </select>
+                    <div class="notice" style="margin:0;font-size:11px;padding:8px 10px;">
+                      🔒 Saved to your account — syncs to all your devices automatically when logged in.
+                    </div>
                   </div>
                 </div>
                 <label class="check-option" style="min-height:42px;">
@@ -1497,7 +1508,7 @@
                   <input id="llmProxyUrl" placeholder="http://localhost:3000/api/health-assistant" />
                 </div>
                 <div class="topbar-actions">
-                  <button class="btn primary" id="btnSaveKey"><i class="fa-solid fa-floppy-disk"></i> Save Key Setting</button>
+                  <button class="btn primary" id="btnSaveKey"><i class="fa-solid fa-cloud-arrow-up"></i> Save & Sync to Account</button>
                   <button class="btn blue" id="btnRunLLM"><i class="fa-solid fa-brain"></i> Run Analysis Now</button>
                   <button class="btn ghost" id="btnBuildMcp"><i class="fa-solid fa-diagram-project"></i> Build MCP Context</button>
                 </div>
@@ -1661,7 +1672,133 @@
     <div class="answer-pop-body" id="answerPopBody"></div>
   </div>
 
+  <!-- Firebase SDK — must be before the inline script below -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
   <script>
+    // =====================================================================
+    // FIREBASE CONFIG — shared project with index_3.html / index(1).html
+    // =====================================================================
+    const FIREBASE_CONFIG = {
+      apiKey: "AIzaSyAOkos2kfmtlKuun_49xOBJHO4gF916zhI",
+      authDomain: "smart-breath-diabetes-detector.firebaseapp.com",
+      projectId: "smart-breath-diabetes-detector",
+      storageBucket: "smart-breath-diabetes-detector.firebasestorage.app",
+      messagingSenderId: "87851688079",
+      appId: "1:87851688079:web:dcd8771fd97ba21bf8d0fa",
+      measurementId: "G-NPJZ2L3RMB"
+    };
+
+    let fbApp, fbAuth, fbDb;
+    let FIREBASE_READY = false;
+
+    // ── Firestore helpers ────────────────────────────────────────────────
+    const CloudDB = {
+      // Save/merge arbitrary fields to users/{uid}
+      saveProfile: async (uid, data) => fbDb.collection("users").doc(uid).set(data, { merge: true }),
+      getProfile: async (uid) => {
+        const doc = await fbDb.collection("users").doc(uid).get();
+        return doc.exists ? doc.data() : null;
+      },
+      // Per-user AI settings (api key, provider, model) — stored encrypted-ish as base64
+      // Not truly secure but keeps the key off localStorage and tied to the account
+      saveAISettings: async (uid, settings) => {
+        await fbDb.collection("users").doc(uid).set(
+          { aiSettings: settings }, { merge: true }
+        );
+      },
+      loadAISettings: async (uid) => {
+        const doc = await fbDb.collection("users").doc(uid).get();
+        return doc.exists ? (doc.data().aiSettings || null) : null;
+      }
+    };
+
+    function initFirebase() {
+      try {
+        firebase.initializeApp(FIREBASE_CONFIG);
+        fbAuth = firebase.auth();
+        fbDb = firebase.firestore();
+        FIREBASE_READY = true;
+        $("firebaseStatusNotice").textContent = "🔥 Firebase connected — accounts & API keys are global across all devices.";
+        $("firebaseStatusNotice").className = "notice";
+
+        fbAuth.setPersistence(firebase.auth.Auth.Persistence.LOCAL);
+
+        fbAuth.onAuthStateChanged(async (user) => {
+          if (user && !STATE.currentUser) {
+            const data = await CloudDB.getProfile(user.uid);
+            // Profile is stored under .profile (our wrapper) or flat (index(1).html style)
+            const profile = data?.profile || (data?.username ? data : null);
+            if (profile) {
+              startUserSession(user.uid, profile, true, user.email);
+              applyQuestionnaireToFactors(profile.questionnaire || {});
+              // Load this user's saved AI settings from Firestore
+              await loadAISettingsFromCloud(user.uid);
+            } else {
+              showAuthView("register");
+              $("authScreen").classList.remove("hidden");
+              $("authLoginMessage").textContent = "Account found but no profile yet. Please register your details.";
+            }
+          }
+        });
+      } catch (err) {
+        console.error("Firebase init failed:", err);
+        $("firebaseStatusNotice").textContent = "⚠️ Firebase failed to init. Using local auth fallback.";
+        $("firebaseStatusNotice").className = "notice safety";
+        FIREBASE_READY = false;
+      }
+    }
+
+    // Load saved AI settings for logged-in user from Firestore
+    async function loadAISettingsFromCloud(uid) {
+      try {
+        const settings = await CloudDB.loadAISettings(uid);
+        if (!settings) return;
+        if (settings.apiKey) {
+          STATE.apiKey = settings.apiKey;
+          $("openaiApiKey").value = settings.apiKey;
+        }
+        if (settings.aiProvider) {
+          STATE.aiProvider = settings.aiProvider;
+          $("aiProvider").value = settings.aiProvider;
+        }
+        if (settings.openaiModel) {
+          STATE.openaiModel = settings.openaiModel;
+          $("openaiModel").value = settings.openaiModel;
+        }
+        if (settings.geminiModel) {
+          STATE.geminiModel = settings.geminiModel;
+          $("geminiModel").value = settings.geminiModel;
+        }
+        if (settings.autoAnalyze !== undefined) {
+          STATE.autoAnalyze = settings.autoAnalyze;
+          $("autoAnalyze").checked = settings.autoAnalyze;
+        }
+        onProviderChange(); // sync UI to loaded provider
+        $("llmStatus").textContent = `✓ AI settings loaded from your account (${STATE.aiProvider === "gemini" ? "Gemini" : "OpenAI"}).`;
+      } catch (err) {
+        console.warn("Could not load AI settings from cloud:", err);
+      }
+    }
+
+    // Save AI settings for logged-in user to Firestore
+    async function saveAISettingsToCloud() {
+      if (!FIREBASE_READY || !STATE.currentUser) return;
+      try {
+        await CloudDB.saveAISettings(STATE.currentUser, {
+          apiKey: STATE.apiKey,
+          aiProvider: STATE.aiProvider,
+          openaiModel: STATE.openaiModel,
+          geminiModel: STATE.geminiModel,
+          autoAnalyze: STATE.autoAnalyze,
+          updatedAt: new Date().toISOString()
+        });
+      } catch (err) {
+        console.warn("Could not save AI settings to cloud:", err);
+      }
+    }
+
     const CONFIG = {
       mqttTopic: "siit/med/breath/waranyu.arty",
       pressureStart: 2.5,
@@ -1673,13 +1810,16 @@
       targetRounds: 3,
       idealBreathDuration: 2.5,
       defaultModel: "gpt-5",
+      defaultGeminiModel: "gemini-1.5-flash",
       localLogKey: "breathVocTrendLogs.v1",
       localFactorKey: "breathVocTrendFactors.v1",
       localUsersKey: "breathVocUsers.v1",
       localSessionKey: "breathVocSession.v1",
       localApiKeyKey: "breathVocOpenAIKey.v1",
       localModelKey: "breathVocOpenAIModel.v1",
-      localAutoAnalyzeKey: "breathVocAutoAnalyze.v1"
+      localAutoAnalyzeKey: "breathVocAutoAnalyze.v1",
+      localProviderKey: "breathVocAIProvider.v1",
+      localGeminiModelKey: "breathVocGeminiModel.v1"
     };
 
     const ROLE_DEPTHS = {
@@ -1830,6 +1970,8 @@
       apiKey: "",
       apiKeyStorage: "session",
       openaiModel: CONFIG.defaultModel,
+      geminiModel: CONFIG.defaultGeminiModel,
+      aiProvider: "openai",
       autoAnalyze: false,
       lastMcpContext: null,
       lastResult: null,
@@ -1847,12 +1989,11 @@
       $("authRegisterTab").classList.toggle("active", view === "register");
     }
 
+    // ── Auth helpers (Firebase-first, localStorage fallback) ────────────
+
     function getUsers() {
-      try {
-        return JSON.parse(localStorage.getItem(CONFIG.localUsersKey) || "{}");
-      } catch {
-        return {};
-      }
+      try { return JSON.parse(localStorage.getItem(CONFIG.localUsersKey) || "{}"); }
+      catch { return {}; }
     }
 
     function saveUsers(users) {
@@ -1868,15 +2009,174 @@
       return `local-demo-${Math.abs(hash)}`;
     }
 
+    // Use email = username@breathvoc.local so Firebase Email Auth works
+    function usernameToEmail(username) {
+      return `${username.replace(/[^a-zA-Z0-9._-]/g, "_")}@breathvoc.local`;
+    }
+
+    async function registerUser() {
+      const username = $("regUsername").value.trim();
+      const password = $("regPassword").value;
+      if (!username || password.length < 4) {
+        $("authRegisterMessage").textContent = "Please enter a username and password with at least 4 characters.";
+        $("authRegisterMessage").className = "notice safety";
+        return;
+      }
+      const profile = buildProfileFromRegister();
+
+      if (FIREBASE_READY) {
+        try {
+          $("authRegisterMessage").textContent = "Creating account…";
+          const email = usernameToEmail(username);
+          const cred = await fbAuth.createUserWithEmailAndPassword(email, password);
+          await fbDb.collection("users").doc(cred.user.uid).set({ profile, username, createdAt: new Date().toISOString() });
+          startUserSession(cred.user.uid, profile, true, email);
+          applyQuestionnaireToFactors(profile.questionnaire);
+          addAssistantBubble(`Profile created for ${profile.displayName}. Role context: ${profile.roleDepthLabel}.`);
+        } catch (err) {
+          const msg = err.code === "auth/email-already-in-use" ? "Username already exists. Please login." : err.message;
+          $("authRegisterMessage").textContent = msg;
+          $("authRegisterMessage").className = "notice safety";
+        }
+        return;
+      }
+      // Fallback: localStorage
+      const users = getUsers();
+      if (users[username]) {
+        $("authRegisterMessage").textContent = "This username already exists. Please login or use another ID.";
+        $("authRegisterMessage").className = "notice safety";
+        return;
+      }
+      users[username] = { passwordHash: simpleHash(password), profile };
+      saveUsers(users);
+      startUserSession(username, profile, true);
+      applyQuestionnaireToFactors(profile.questionnaire);
+      addAssistantBubble(`Profile created for ${profile.displayName}. Role context: ${profile.roleDepthLabel}.`);
+    }
+
+    async function loginUser() {
+      const username = $("loginUsername").value.trim();
+      const password = $("loginPassword").value;
+
+      if (FIREBASE_READY) {
+        try {
+          $("authLoginMessage").textContent = "Signing in…";
+          const email = usernameToEmail(username);
+          const cred = await fbAuth.signInWithEmailAndPassword(email, password);
+          if (!$("rememberSession").checked) {
+            await fbAuth.setPersistence(firebase.auth.Auth.Persistence.SESSION);
+          }
+          const doc = await fbDb.collection("users").doc(cred.user.uid).get();
+          const profile = doc.exists ? doc.data().profile : null;
+          if (!profile) {
+            $("authLoginMessage").textContent = "Account found but no profile. Please register your details.";
+            $("authLoginMessage").className = "notice safety";
+            showAuthView("register");
+            return;
+          }
+          startUserSession(cred.user.uid, profile, $("rememberSession").checked, email);
+          applyQuestionnaireToFactors(profile.questionnaire);
+          addAssistantBubble(`Welcome back ${profile.displayName}. I will use your role and questionnaire context for analysis.`);
+        } catch (err) {
+          const msg = (err.code === "auth/user-not-found" || err.code === "auth/wrong-password" || err.code === "auth/invalid-credential")
+            ? "Username or password is not correct." : err.message;
+          $("authLoginMessage").textContent = msg;
+          $("authLoginMessage").className = "notice safety";
+        }
+        return;
+      }
+      // Fallback: localStorage
+      const users = getUsers();
+      const record = users[username];
+      if (!record || record.passwordHash !== simpleHash(password)) {
+        $("authLoginMessage").textContent = "Username or password is not correct.";
+        $("authLoginMessage").className = "notice safety";
+        return;
+      }
+      startUserSession(username, record.profile, $("rememberSession").checked);
+      applyQuestionnaireToFactors(record.profile.questionnaire);
+      addAssistantBubble(`Welcome back ${record.profile.displayName}. I will use your role and questionnaire context for analysis.`);
+    }
+
+    function startUserSession(uid, profile, remember, email) {
+      STATE.currentUser = uid;
+      STATE.profile = profile;
+      if (remember) localStorage.setItem(CONFIG.localSessionKey, uid);
+      else sessionStorage.setItem(CONFIG.localSessionKey, uid);
+      $("authScreen").classList.add("hidden");
+      loadLogs();
+      renderLogTable();
+      updateTrendChart();
+      updateSummaries();
+      updateUserUI();
+      generateDoctorReport();
+      updateCaregiverView();
+      // Load this user's saved AI settings from Firestore (non-blocking)
+      if (FIREBASE_READY && uid) loadAISettingsFromCloud(uid);
+    }
+
+    function restoreSession() {
+      // Firebase handles its own session restore via onAuthStateChanged
+      if (FIREBASE_READY) {
+        // Show auth screen until Firebase confirms — onAuthStateChanged will hide it
+        $("authScreen").classList.remove("hidden");
+        return;
+      }
+      // Fallback: localStorage session
+      const username = sessionStorage.getItem(CONFIG.localSessionKey) || localStorage.getItem(CONFIG.localSessionKey);
+      if (!username) { $("authScreen").classList.remove("hidden"); return; }
+      const record = getUsers()[username];
+      if (!record) { $("authScreen").classList.remove("hidden"); return; }
+      STATE.currentUser = username;
+      STATE.profile = record.profile;
+      $("authScreen").classList.add("hidden");
+      loadLogs();
+      renderLogTable();
+      updateTrendChart();
+      updateSummaries();
+      updateUserUI();
+      applyQuestionnaireToFactors(record.profile.questionnaire);
+    }
+
+    async function logoutUser() {
+      STATE.currentUser = null;
+      STATE.profile = null;
+      STATE.logs = [];
+      STATE.lastResult = null;
+      // Clear API key from UI (but it's saved in cloud — will reload on next login)
+      STATE.apiKey = "";
+      $("openaiApiKey").value = "";
+      sessionStorage.removeItem(CONFIG.localSessionKey);
+      localStorage.removeItem(CONFIG.localSessionKey);
+      if (FIREBASE_READY) { try { await fbAuth.signOut(); } catch (e) {} }
+      $("authScreen").classList.remove("hidden");
+      $("userChip").innerHTML = '<i class="fa-solid fa-user"></i> Guest';
+      renderLogTable();
+      updateTrendChart();
+      updateSummaries();
+    }
+
+    function updateUserUI() {
+      if (!STATE.profile) return;
+      $("userChip").innerHTML = `<i class="fa-solid fa-user"></i> ${STATE.profile.displayName} · ${STATE.profile.role}`;
+      renderQuickQuestions();
+    }
+
+    function renderRoleDepthOptions() {
+      const role = $("regRole").value;
+      const select = $("regRoleDepth");
+      select.innerHTML = (ROLE_DEPTHS[role] || []).map(([value, label]) => `<option value="${value}">${label}</option>`).join("");
+      $("rolePreview").textContent = ROLE_DESCRIPTIONS[role] || "";
+    }
+
     function buildProfileFromRegister() {
       const role = $("regRole").value;
       const roleDepth = $("regRoleDepth").value;
       return {
         username: $("regUsername").value.trim(),
         displayName: $("regDisplayName").value.trim() || $("regUsername").value.trim(),
-        role,
-        roleDepth,
-        roleDepthLabel: ROLE_DEPTHS[role]?.find(([value]) => value === roleDepth)?.[1] || roleDepth,
+        role, roleDepth,
+        roleDepthLabel: ROLE_DEPTHS[role]?.find(([v]) => v === roleDepth)?.[1] || roleDepth,
         roleDescription: ROLE_DESCRIPTIONS[role] || "",
         goal: $("regGoal").value,
         age: toNumber($("regAge").value, null),
@@ -1913,141 +2213,66 @@
         strongOdor: ["perfume", "foodOdor"].includes(questionnaire.confounders),
         symptoms: questionnaire.symptoms && questionnaire.symptoms !== "none"
       };
-      Object.entries(factorMap).forEach(([key, value]) => {
-        if (value) STATE.factors[key] = true;
-      });
+      Object.entries(factorMap).forEach(([key, value]) => { if (value) STATE.factors[key] = true; });
       saveFactors();
       initFactorGrid();
       updateTopMetrics();
     }
 
-    function renderRoleDepthOptions() {
-      const role = $("regRole").value;
-      const select = $("regRoleDepth");
-      select.innerHTML = (ROLE_DEPTHS[role] || []).map(([value, label]) => `<option value="${value}">${label}</option>`).join("");
-      $("rolePreview").textContent = ROLE_DESCRIPTIONS[role] || "";
+    function onProviderChange() {
+      const provider = $("aiProvider").value;
+      STATE.aiProvider = provider;
+      $("openaiModel").style.display = provider === "openai" ? "" : "none";
+      $("geminiModel").style.display = provider === "gemini" ? "" : "none";
+      $("apiKeyLabel").textContent = provider === "gemini" ? "Google AI (Gemini) API key" : "OpenAI API key";
+      $("openaiApiKey").placeholder = provider === "gemini" ? "AIza..." : "sk-...";
+      localStorage.setItem(CONFIG.localProviderKey, provider);
     }
 
-    function registerUser() {
-      const username = $("regUsername").value.trim();
-      const password = $("regPassword").value;
-      if (!username || password.length < 4) {
-        $("authRegisterMessage").textContent = "Please enter a username and password with at least 4 characters.";
-        $("authRegisterMessage").className = "notice safety";
-        return;
-      }
-      const users = getUsers();
-      if (users[username]) {
-        $("authRegisterMessage").textContent = "This username already exists. Please login or use another ID.";
-        $("authRegisterMessage").className = "notice safety";
-        return;
-      }
-      const profile = buildProfileFromRegister();
-      users[username] = { passwordHash: simpleHash(password), profile };
-      saveUsers(users);
-      startUserSession(username, profile, true);
-      applyQuestionnaireToFactors(profile.questionnaire);
-      addAssistantBubble(`Profile created for ${profile.displayName}. Role context: ${profile.roleDepthLabel}.`);
-    }
-
-    function loginUser() {
-      const username = $("loginUsername").value.trim();
-      const password = $("loginPassword").value;
-      const users = getUsers();
-      const record = users[username];
-      if (!record || record.passwordHash !== simpleHash(password)) {
-        $("authLoginMessage").textContent = "Username or password is not correct.";
-        $("authLoginMessage").className = "notice safety";
-        return;
-      }
-      startUserSession(username, record.profile, $("rememberSession").checked);
-      applyQuestionnaireToFactors(record.profile.questionnaire);
-      addAssistantBubble(`Welcome back ${record.profile.displayName}. I will use your role and questionnaire context for analysis.`);
-    }
-
-    function startUserSession(username, profile, remember) {
-      STATE.currentUser = username;
-      STATE.profile = profile;
-      if (remember) localStorage.setItem(CONFIG.localSessionKey, username);
-      else sessionStorage.setItem(CONFIG.localSessionKey, username);
-      $("authScreen").classList.add("hidden");
-      loadLogs();
-      renderLogTable();
-      updateTrendChart();
-      updateSummaries();
-      updateUserUI();
-      generateDoctorReport();
-      updateCaregiverView();
-    }
-
-    function restoreSession() {
-      const username = sessionStorage.getItem(CONFIG.localSessionKey) || localStorage.getItem(CONFIG.localSessionKey);
-      if (!username) {
-        $("authScreen").classList.remove("hidden");
-        return;
-      }
-      const record = getUsers()[username];
-      if (!record) {
-        $("authScreen").classList.remove("hidden");
-        return;
-      }
-      STATE.currentUser = username;
-      STATE.profile = record.profile;
-      $("authScreen").classList.add("hidden");
-      loadLogs();
-      renderLogTable();
-      updateTrendChart();
-      updateSummaries();
-      updateUserUI();
-      applyQuestionnaireToFactors(record.profile.questionnaire);
-    }
-
-    function logoutUser() {
-      STATE.currentUser = null;
-      STATE.profile = null;
-      STATE.logs = [];
-      STATE.lastResult = null;
-      sessionStorage.removeItem(CONFIG.localSessionKey);
-      localStorage.removeItem(CONFIG.localSessionKey);
-      $("authScreen").classList.remove("hidden");
-      $("userChip").innerHTML = '<i class="fa-solid fa-user"></i> Guest';
-      renderLogTable();
-      updateTrendChart();
-      updateSummaries();
-    }
-
-    function updateUserUI() {
-      if (!STATE.profile) return;
-      $("userChip").innerHTML = `<i class="fa-solid fa-user"></i> ${STATE.profile.displayName} · ${STATE.profile.role}`;
-      renderQuickQuestions();
-    }
-
+    // loadApiSettings: sets UI defaults from localStorage.
+    // Cloud settings override this after login via loadAISettingsFromCloud().
     function loadApiSettings() {
-      STATE.apiKey = sessionStorage.getItem(CONFIG.localApiKeyKey) || localStorage.getItem(CONFIG.localApiKeyKey) || "";
+      STATE.apiKey = localStorage.getItem(CONFIG.localApiKeyKey) || "";
       STATE.openaiModel = localStorage.getItem(CONFIG.localModelKey) || CONFIG.defaultModel;
+      STATE.geminiModel = localStorage.getItem(CONFIG.localGeminiModelKey) || CONFIG.defaultGeminiModel;
+      STATE.aiProvider = localStorage.getItem(CONFIG.localProviderKey) || "openai";
       STATE.autoAnalyze = localStorage.getItem(CONFIG.localAutoAnalyzeKey) === "true";
       $("openaiApiKey").value = STATE.apiKey;
       $("openaiModel").value = STATE.openaiModel;
+      $("aiProvider").value = STATE.aiProvider;
       $("autoAnalyze").checked = STATE.autoAnalyze;
+      onProviderChange();
     }
 
-    function saveApiSettings() {
+    async function saveApiSettings() {
       const key = $("openaiApiKey").value.trim();
-      const storage = $("apiKeyStorage").value;
       STATE.apiKey = key;
-      STATE.apiKeyStorage = storage;
       STATE.openaiModel = $("openaiModel").value;
+      STATE.geminiModel = $("geminiModel").value;
+      STATE.aiProvider = $("aiProvider").value;
       STATE.autoAnalyze = $("autoAnalyze").checked;
 
-      sessionStorage.removeItem(CONFIG.localApiKeyKey);
-      localStorage.removeItem(CONFIG.localApiKeyKey);
-      if (key && storage === "session") sessionStorage.setItem(CONFIG.localApiKeyKey, key);
-      if (key && storage === "local") localStorage.setItem(CONFIG.localApiKeyKey, key);
+      // Always keep a local copy as fallback
+      if (key) localStorage.setItem(CONFIG.localApiKeyKey, key);
+      else localStorage.removeItem(CONFIG.localApiKeyKey);
       localStorage.setItem(CONFIG.localModelKey, STATE.openaiModel);
+      localStorage.setItem(CONFIG.localGeminiModelKey, STATE.geminiModel);
       localStorage.setItem(CONFIG.localAutoAnalyzeKey, String(STATE.autoAnalyze));
-      $("llmStatus").textContent = key
-        ? `API key setting saved for ${storage === "local" ? "this browser" : storage === "session" ? "this session" : "this run only"}.`
-        : "No API key saved. The app will use proxy or local fallback.";
+      localStorage.setItem(CONFIG.localProviderKey, STATE.aiProvider);
+
+      // Push to Firestore so it follows the user to any device
+      if (FIREBASE_READY && STATE.currentUser) {
+        await saveAISettingsToCloud();
+        const providerName = STATE.aiProvider === "gemini" ? "Gemini (Google AI)" : "OpenAI";
+        $("llmStatus").textContent = key
+          ? `✓ ${providerName} key saved to your account — available on all devices.`
+          : "API key cleared from your account.";
+      } else {
+        const providerName = STATE.aiProvider === "gemini" ? "Gemini (Google AI)" : "OpenAI";
+        $("llmStatus").textContent = key
+          ? `${providerName} key saved locally (login to sync across devices).`
+          : "No API key saved. The app will use proxy or local fallback.";
+      }
     }
 
     function toggleApiKeyVisibility() {
@@ -3028,17 +3253,21 @@
     async function analyzeWithLLM(question = "Analyze the latest breath VOC metabolic trend context.") {
       STATE.apiKey = $("openaiApiKey").value.trim() || STATE.apiKey;
       STATE.openaiModel = $("openaiModel").value || STATE.openaiModel || CONFIG.defaultModel;
+      STATE.geminiModel = $("geminiModel").value || STATE.geminiModel || CONFIG.defaultGeminiModel;
+      STATE.aiProvider = $("aiProvider").value || STATE.aiProvider || "openai";
       STATE.autoAnalyze = $("autoAnalyze").checked;
       const context = buildMCPContext(question);
       const proxyUrl = $("llmProxyUrl").value.trim();
       const key = $("openaiApiKey").value.trim() || STATE.apiKey;
 
-      if (proxyUrl) {
-        await callAssistantProxy(proxyUrl, question, context);
-        return;
-      }
+      if (proxyUrl) { await callAssistantProxy(proxyUrl, question, context); return; }
+
       if (key) {
-        await callOpenAIResponses(key, question, context);
+        if (STATE.aiProvider === "gemini") {
+          await callGeminiAPI(key, question, context);
+        } else {
+          await callOpenAIResponses(key, question, context);
+        }
         return;
       }
       addAssistantBubble(localAssistantAnswer(question, context));
@@ -3120,6 +3349,47 @@
         });
       });
       return parts.join("\n").trim() || "No text output returned.";
+    }
+
+    // ── Gemini API (Google AI Studio — free 1500 req/day with gemini-1.5-flash) ──
+    async function callGeminiAPI(apiKey, question, context) {
+      const model = $("geminiModel").value || STATE.geminiModel || CONFIG.defaultGeminiModel;
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+      const systemPrompt = [
+        "You are a careful healthcare technology assistant for a breath VOC metabolic trend screening app.",
+        "Do not diagnose disease. Do not claim glucose measurement, blood sugar prediction, DKA diagnosis, diabetes detection, or insulin resistance measurement.",
+        "Explain in Thai by default, with concise bullet points.",
+        "Use the MCP-style context package as the source of truth. Mention sample quality, reliability, possible confounders, trend vs personal baseline, and confirmatory action when appropriate.",
+        "If symptoms or high/persistent trend appear, advise standard blood glucose/ketone testing and healthcare professional consultation."
+      ].join("\n");
+      try {
+        $("llmStatus").textContent = `Calling Gemini (${model})…`;
+        const response = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            systemInstruction: { parts: [{ text: systemPrompt }] },
+            contents: [{
+              role: "user",
+              parts: [{ text: `User question: ${question}\n\nMCP context package:\n${JSON.stringify(context, null, 2)}` }]
+            }],
+            generationConfig: { maxOutputTokens: 900 }
+          })
+        });
+        if (!response.ok) {
+          const errText = await response.text();
+          throw new Error(`Gemini HTTP ${response.status}: ${errText.slice(0, 300)}`);
+        }
+        const data = await response.json();
+        const text = data.candidates?.[0]?.content?.parts?.map(p => p.text || "").join("\n").trim()
+          || "No response from Gemini.";
+        addAssistantBubble(text);
+        $("llmStatus").textContent = `Gemini (${model}) analysis completed.`;
+      } catch (error) {
+        console.error(error);
+        $("llmStatus").textContent = `Gemini call failed: ${error.message}. Using local fallback.`;
+        addAssistantBubble(localAssistantAnswer(question, context));
+      }
     }
 
     function localAssistantAnswer(question, context = buildMCPContext(question)) {
@@ -3435,6 +3705,7 @@
     }
 
     function bootstrap() {
+      initFirebase(); // must be first — sets FIREBASE_READY and onAuthStateChanged
       loadFactors();
       bindEvents();
       renderRoleDepthOptions();
