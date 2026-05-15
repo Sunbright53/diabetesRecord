@@ -1530,6 +1530,7 @@
                       <th>Reliability</th>
                       <th>Context</th>
                       <th>Action</th>
+                      <th></th>
                     </tr>
                   </thead>
                   <tbody id="logTable"></tbody>
@@ -1906,6 +1907,10 @@
           STATE.apiKey = settings.apiKey;
           $("openaiApiKey").value = settings.apiKey;
         }
+        if (settings.geminiApiKey) {
+          STATE.geminiApiKey = settings.geminiApiKey;
+          $("geminiApiKey").value = settings.geminiApiKey;
+        }
         if (settings.aiProvider) {
           STATE.aiProvider = settings.aiProvider;
           $("aiProvider").value = settings.aiProvider;
@@ -1923,7 +1928,11 @@
           $("autoAnalyze").checked = settings.autoAnalyze;
         }
         onProviderChange(); // sync UI to loaded provider
-        $("llmStatus").textContent = `✓ AI settings loaded from your account (${STATE.aiProvider === "gemini" ? "Gemini" : "OpenAI"}).`;
+        const providerLabel = STATE.aiProvider === "gemini" ? "Gemini"
+          : (STATE.aiProvider === "auto" || STATE.aiProvider === "auto_gemini_first") ? "Auto-failover"
+          : "OpenAI";
+        const keyInfo = [STATE.apiKey ? "OpenAI ✓" : "", STATE.geminiApiKey ? "Gemini ✓" : ""].filter(Boolean).join(", ") || "no keys";
+        $("llmStatus").textContent = `✓ AI settings loaded from your account — ${providerLabel} mode, keys: ${keyInfo}.`;
       } catch (err) {
         console.warn("Could not load AI settings from cloud:", err);
       }
@@ -1935,6 +1944,7 @@
       try {
         await CloudDB.saveAISettings(STATE.currentUser, {
           apiKey: STATE.apiKey,
+          geminiApiKey: STATE.geminiApiKey,
           aiProvider: STATE.aiProvider,
           openaiModel: STATE.openaiModel,
           geminiModel: STATE.geminiModel,
@@ -3053,16 +3063,39 @@
         data: {
           labels: [],
           datasets: [
-            { label: "Trend score", data: [], borderColor: "#0f766e", backgroundColor: "rgba(15,118,110,0.12)", tension: 0.25, fill: true },
-            { label: "VOC delta", data: [], borderColor: "#d97706", backgroundColor: "rgba(217,119,6,0.08)", tension: 0.25, yAxisID: "delta" }
+            { label: "Trend score", data: [], borderColor: "#0f766e", backgroundColor: "rgba(15,118,110,0.12)", tension: 0.25, fill: true, yAxisID: "score", pointRadius: 3 },
+            { label: "VOC delta", data: [], borderColor: "#d97706", backgroundColor: "rgba(217,119,6,0.08)", tension: 0.25, yAxisID: "delta", pointRadius: 3 }
           ]
         },
         options: {
           ...chartDefaults,
+          interaction: { mode: "index", intersect: false },
+          plugins: {
+            ...chartDefaults.plugins,
+            tooltip: {
+              callbacks: {
+                label: (ctx) => ctx.dataset.yAxisID === "score"
+                  ? ` Score: ${ctx.parsed.y}`
+                  : ` VOC delta: ${ctx.parsed.y}`
+              }
+            }
+          },
           scales: {
             x: chartDefaults.scales.x,
-            y: { ...chartDefaults.scales.y, max: 100 },
-            delta: { position: "right", beginAtZero: true, grid: { drawOnChartArea: false }, ticks: { color: "#d97706" } }
+            score: {
+              position: "left",
+              min: 0,
+              max: 100,
+              grid: { color: "rgba(0,0,0,0.06)" },
+              ticks: { color: "#0f766e", callback: (v) => v + "%" }
+            },
+            delta: {
+              position: "right",
+              min: 0,
+              suggestedMax: 520,
+              grid: { drawOnChartArea: false },
+              ticks: { color: "#d97706" }
+            }
           }
         }
       });
@@ -3100,15 +3133,24 @@
       STATE.trendChart.update("none");
     }
 
+    function deleteLog(timestamp) {
+      STATE.logs = STATE.logs.filter((l) => l.timestamp !== timestamp);
+      saveLogs();
+      renderLogTable();
+      updateTrendChart();
+      updateSummaries();
+    }
+
     function renderLogTable() {
       $("historyCount").textContent = `${STATE.logs.length} reading${STATE.logs.length === 1 ? "" : "s"}`;
       if (!STATE.logs.length) {
-        $("logTable").innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:28px;">No guided breath checks saved yet.</td></tr>`;
+        $("logTable").innerHTML = `<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:28px;">No guided breath checks saved yet.</td></tr>`;
         return;
       }
       $("logTable").innerHTML = STATE.logs.slice().reverse().map((log) => {
         const context = log.factors && log.factors.length ? log.factors.join(", ") : "None noted";
         const action = log.trendLevel === "High" ? "Confirm if persistent" : log.trendLevel === "Moderate" ? "Repeat / monitor" : "Monitor";
+        const safeTs = log.timestamp.replace(/"/g, "&quot;");
         return `
           <tr>
             <td>${log.timestamp}</td>
@@ -3119,6 +3161,7 @@
             <td>${log.reliability.level}</td>
             <td>${context}</td>
             <td>${action}</td>
+            <td><button class="btn danger" style="min-height:28px;padding:0 8px;font-size:11px;" onclick="deleteLog('${safeTs}')"><i class="fa-solid fa-trash"></i></button></td>
           </tr>`;
       }).join("");
     }
@@ -3915,11 +3958,60 @@
       return STATE.currentUser ? `${CONFIG.localLogKey}.${STATE.currentUser}` : CONFIG.localLogKey;
     }
 
-    function saveLogs() {
-      localStorage.setItem(logStorageKey(), JSON.stringify(STATE.logs.slice(-300)));
+    // ── Cloud log helpers ─────────────────────────────────────────────────────
+    // Logs are stored in Firestore at users/{uid}/data/logs as a single doc.
+    // localStorage is kept in sync as a fast local cache / offline fallback.
+
+    async function saveLogsToCloud(uid) {
+      if (!FIREBASE_READY || !uid) return;
+      try {
+        await fbDb.collection("users").doc(uid)
+          .collection("data").doc("logs")
+          .set({ logs: STATE.logs.slice(-300), updatedAt: new Date().toISOString() });
+      } catch (e) {
+        console.warn("[Logs] Firestore save failed — local cache still updated.", e);
+      }
     }
 
-    function loadLogs() {
+    async function loadLogsFromCloud(uid) {
+      if (!FIREBASE_READY || !uid) return false;
+      try {
+        const doc = await fbDb.collection("users").doc(uid)
+          .collection("data").doc("logs").get();
+        if (doc.exists && Array.isArray(doc.data().logs)) {
+          STATE.logs = doc.data().logs;
+          // Sync to local cache
+          localStorage.setItem(logStorageKey(), JSON.stringify(STATE.logs));
+          return true;
+        }
+      } catch (e) {
+        console.warn("[Logs] Firestore load failed — falling back to localStorage.", e);
+      }
+      return false;
+    }
+
+    function saveLogs() {
+      // Always update local cache immediately
+      localStorage.setItem(logStorageKey(), JSON.stringify(STATE.logs.slice(-300)));
+      // Fire-and-forget cloud sync if logged in via Firebase
+      const uid = fbAuth?.currentUser?.uid;
+      if (uid) saveLogsToCloud(uid);
+    }
+
+    async function loadLogs() {
+      const uid = fbAuth?.currentUser?.uid;
+      // Try cloud first if Firebase user is logged in
+      if (uid) {
+        const loaded = await loadLogsFromCloud(uid);
+        if (loaded) {
+          STATE.lastResult = STATE.logs[STATE.logs.length - 1] || null;
+          if (STATE.lastResult) updateResultUI(STATE.lastResult);
+          renderLogTable();
+          updateSummaries();
+          return;
+        }
+      }
+      // Fallback: localStorage
       try {
         STATE.logs = JSON.parse(localStorage.getItem(logStorageKey()) || "[]");
       } catch {
