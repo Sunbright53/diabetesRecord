@@ -1,0 +1,27 @@
+# Dev overrides — auto-loaded by docker compose locally, NOT committed to VPS
+services:
+  web:
+    build:
+      target: deps
+    volumes:
+      - ./apps/web:/app
+      - /app/node_modules
+      - /app/.next
+    command: npm run dev
+    environment:
+      NODE_ENV: development
+
+  api:
+    volumes:
+      - ./apps/api:/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    environment:
+      APP_ENV: development
+
+  worker:
+    volumes:
+      - ./apps/api:/app
+
+  beat:
+    volumes:
+      - ./apps/api:/app

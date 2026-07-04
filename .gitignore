@@ -1,0 +1,52 @@
+# env & secrets
+.env
+.env.local
+.env.*.local
+mosquitto/passwd
+*.pem
+*.key
+*.crt
+
+# node
+node_modules/
+.next/
+apps/web/.next/
+apps/web/node_modules/
+apps/web/out/
+apps/web/.swc/
+
+# python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+apps/api/.venv/
+apps/api/__pycache__/
+apps/api/**/__pycache__/
+*.egg-info/
+.pytest_cache/
+
+# builds
+dist/
+build/
+
+# logs
+*.log
+logs/
+
+# ide
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# os
+.DS_Store
+Thumbs.db
+
+# backups
+/backups/
+
+# content generated
+.contentlayer/
