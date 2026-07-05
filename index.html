@@ -1763,6 +1763,7 @@
                 <div class="metric"><label>VOC Delta</label><strong id="rawVocDigital">--</strong><small>`voc_digital` corrected delta</small></div>
                 <div class="metric"><label>VOC Raw</label><strong id="rawVocRaw">--</strong><small>`voc_raw` ADC</small></div>
                 <div class="metric"><label>VOC Volt</label><strong id="rawVocVolt">--</strong><small>`voc_volt` voltage</small></div>
+                <div class="metric"><label>Acetone (ppm)</label><strong id="rawVocPpm">--</strong><small>TGS1820 curve, from `tgs_delta_mv` or derived</small></div>
                 <div class="metric"><label>DHT22</label><strong id="rawDht">--</strong><small>`humidity`, `temperature`, `dht_valid`</small></div>
               </div>
             </div>
@@ -1978,6 +1979,36 @@
       localProviderKey: "breathVocAIProvider.v1",
       localGeminiModelKey: "breathVocGeminiModel.v1"
     };
+
+    // ── TGS1820 acetone conversion ──────────────────────────────────────────
+    // Figaro TGS1820 datasheet curve: bridge ΔVout (mV) vs acetone (ppm, log scale).
+    // Piecewise-linear interpolation in (log10 ppm ↔ mV) space.
+    const ACETONE_CURVE = [
+      [0.1, 7], [0.3, 15], [1, 30], [3, 52], [10, 90], [30, 135], [50, 162]
+    ];
+    function mvToPpm(mv) {
+      if (!Number.isFinite(mv) || mv <= 0) return 0;
+      const [firstPpm, firstMv] = ACETONE_CURVE[0];
+      if (mv <= firstMv) return firstPpm * (mv / firstMv);
+      for (let i = 1; i < ACETONE_CURVE.length; i++) {
+        const [p1, v1] = ACETONE_CURVE[i - 1];
+        const [p2, v2] = ACETONE_CURVE[i];
+        if (mv <= v2) {
+          const frac = (mv - v1) / (v2 - v1);
+          return 10 ** (Math.log10(p1) + frac * (Math.log10(p2) - Math.log10(p1)));
+        }
+      }
+      const [p1, v1] = ACETONE_CURVE[ACETONE_CURVE.length - 2];
+      const [p2, v2] = ACETONE_CURVE[ACETONE_CURVE.length - 1];
+      const frac = (mv - v1) / (v2 - v1);
+      return 10 ** (Math.log10(p1) + frac * (Math.log10(p2) - Math.log10(p1)));
+    }
+    // ADC → mV: matches ESP32 12-bit ADC (0–4095) at 3.3 V reference.
+    // Bridge this: today's firmware still sends MQ138 ADC-count deltas in
+    // `voc_digital`; once wired to a real TGS1820, have the firmware publish
+    // the bridge mV delta directly as `tgs_delta_mv` and this conversion is
+    // skipped automatically (see normalizePacket below).
+    const ADC_MV_PER_COUNT = 3300 / 4095;
 
     const ROLE_DEPTHS = {
       patient: [
@@ -2521,6 +2552,16 @@
           : "IDLE";
       const dhtValid = raw.dht_valid === undefined ? (humidity !== null && temperature !== null) : Boolean(raw.dht_valid);
 
+      // TGS1820 bridge mV delta: prefer a direct field from newer firmware
+      // (`tgs_delta_mv` / `tgsDeltaMv`); until then, derive an approximate mV
+      // delta from the MQ138-era `voc_digital` ADC-count delta so the ppm
+      // reading below is populated either way.
+      const vocMv = toNumber(
+        raw.tgs_delta_mv ?? raw.tgsDeltaMv,
+        vocDelta * ADC_MV_PER_COUNT
+      );
+      const vocPpm = mvToPpm(vocMv);
+
       return {
         ts: Date.now(),
         time: nowLocal(),
@@ -2530,6 +2571,8 @@
         vocDelta,
         vocRaw,
         vocVolt,
+        vocMv,
+        vocPpm,
         humidity,
         temperature,
         dhtValid,
@@ -2559,6 +2602,7 @@
       $("rawVocDigital").textContent = fmt(packet.vocDelta, 0);
       $("rawVocRaw").textContent = fmt(packet.vocRaw, 0);
       $("rawVocVolt").textContent = fmt(packet.vocVolt, 4);
+      $("rawVocPpm").textContent = fmt(packet.vocPpm, packet.vocPpm >= 10 ? 1 : 2);
       $("rawDht").textContent = packet.dhtValid ? `${fmt(packet.humidity, 1)}% / ${fmt(packet.temperature, 1)}C` : "Invalid";
       $("payloadJson").textContent = JSON.stringify(packet, null, 2);
       $("liveStatusChip").textContent = packet.status === "BLOW" ? "Breath detected" : "Ambient / idle";
