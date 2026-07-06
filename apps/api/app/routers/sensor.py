@@ -17,7 +17,32 @@ from app.schemas.sensor import (
 )
 from app.services import signal_processing as sp
 
+from app.core.security import create_access_token
+
 router = APIRouter(prefix="/sensor", tags=["sensor"])
+
+
+# ─── BLE Provisioning token ───────────────────────────────────────────────────
+
+class ProvisionTokenOut(BaseModel):
+    token: str
+    expires_in: int  # seconds
+    api_base: str
+
+
+@router.post("/provision/token", response_model=ProvisionTokenOut)
+async def get_provision_token(
+    user: User = Depends(get_current_user),
+):
+    """
+    Generate a short-lived (10 min) token for ESP32 BLE provisioning.
+    Web app calls this then sends the token to ESP32 via BLE.
+    ESP32 uses it to call POST /sensor/device/pair without the user having to type anything.
+    """
+    import os
+    token = create_access_token(user.id, expires_minutes=10)
+    api_base = os.getenv("API_BASE_URL", "http://metabreath.duckdns.org/api")
+    return ProvisionTokenOut(token=token, expires_in=600, api_base=api_base)
 
 
 # ─── Device pairing ───────────────────────────────────────────────────────────

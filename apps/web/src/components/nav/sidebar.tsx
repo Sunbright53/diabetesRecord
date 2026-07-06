@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart2, BookOpen, Home, LogOut, Plus, Shield, User } from "lucide-react";
+import { BarChart2, BookOpen, Bot, Home, LogOut, Plus, Shield, User } from "lucide-react";
 import { twMerge } from "tailwind-merge";
 import { useAuth } from "@/lib/auth";
 import { useT } from "@/lib/i18n";
@@ -16,6 +16,7 @@ export function Sidebar() {
   const navItems = [
     { href: "/home",   icon: Home,      label: t("nav.home")    },
     { href: "/log",    icon: Plus,      label: t("nav.log")     },
+    { href: "/chat",   icon: Bot,       label: "AI Chat"        },
     { href: "/learn",  icon: BookOpen,  label: t("nav.learn")   },
     { href: "/trends", icon: BarChart2, label: t("nav.trends")  },
     { href: "/me",     icon: User,      label: t("nav.profile") },

@@ -415,6 +415,8 @@ export const api = {
       request<void>(`/reminders/${id}`, { method: "DELETE" }),
   },
   sensor: {
+    provisionToken: () =>
+      request<{ token: string; expires_in: number; api_base: string }>("/sensor/provision/token", { method: "POST" }),
     listDevices: () => request<DeviceOut[]>("/sensor/devices"),
     getReadings: (deviceId: string, days = 7) =>
       request<SensorReadingOut[]>(`/sensor/readings?device_id=${deviceId}&days=${days}`),

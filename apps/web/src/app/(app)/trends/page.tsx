@@ -18,6 +18,7 @@ import { useT } from "@/lib/i18n";
 import { useDeviceStream } from "@/lib/useDeviceStream";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Wind } from "lucide-react";
 import { EmptyChartIllustration } from "@/components/brand/empty-chart";
 import { twMerge } from "tailwind-merge";
 
@@ -37,11 +38,24 @@ const ACETONE_LABEL_COLOR: Record<string, string> = {
   unreliable: "bg-gray-300",
 };
 
+const ACETONE_ZONE_COLOR: Record<string, string> = {
+  low:        "#00C896",
+  moderate:   "#F59E0B",
+  high:       "#EF4444",
+  unreliable: "#9CA3AF",
+};
+
 export default function TrendsPage() {
   const { t, locale } = useT();
   const { user } = useAuth();
   const [days, setDays] = useState(7);
+  const [selectedDevice, setSelectedDevice] = useState<string | null>(null);
   const { reading: liveReading, connected: liveConnected } = useDeviceStream(user?.id);
+
+  const { data: devices } = useQuery({
+    queryKey: ["devices"],
+    queryFn: () => api.sensor.listDevices(),
+  });
 
   const RANGES = [
     { label: t("trends.ranges.d7"),  days: 7  },
@@ -63,10 +77,28 @@ export default function TrendsPage() {
     queryFn:  () => api.logs.getWeight({ days }),
   });
 
+  // Pick first active device if none selected
+  const effectiveDevice = selectedDevice ?? devices?.find((d) => d.active)?.id ?? devices?.[0]?.id ?? null;
+
+  const { data: sensorReadings, isLoading: sLoading } = useQuery({
+    queryKey: ["sensor-readings", effectiveDevice, days],
+    queryFn:  () => api.sensor.getReadings(effectiveDevice!, days),
+    enabled:  !!effectiveDevice,
+  });
+
   const ketoneData = (ketone ?? []).map((k) => ({
     date:  fmt(k.ts),
     value: +k.value_mmol.toFixed(2),
   }));
+
+  const acetoneData = (sensorReadings ?? [])
+    .filter((r) => r.acetone_delta !== null)
+    .map((r) => ({
+      date:     fmt(r.time),
+      value:    +(r.acetone_delta!.toFixed(2)),
+      label:    r.label ?? "unreliable",
+      quality:  r.quality_score ?? 0,
+    }));
 
   const weightData = (weight ?? []).map((w) => ({
     date:  fmt(w.ts),
@@ -231,6 +263,93 @@ export default function TrendsPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Breath Acetone history */}
+      {(devices && devices.length > 0) && (
+        <Card>
+          <CardContent className="pt-5">
+            <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Wind size={14} className="text-mint-500" strokeWidth={1.6} />
+                  <h2 className="font-semibold text-charcoal-500 tracking-tight">Breath Acetone</h2>
+                </div>
+                <p className="text-xs text-muted mt-0.5">ppm — TGS1820</p>
+              </div>
+              <div className="flex items-center gap-2">
+                {acetoneData.length > 0 && (
+                  <Badge variant="mint">
+                    เฉลี่ย {(acetoneData.reduce((s, d) => s + d.value, 0) / acetoneData.length).toFixed(1)} ppm
+                  </Badge>
+                )}
+                <select
+                  value={effectiveDevice ?? ""}
+                  onChange={(e) => setSelectedDevice(e.target.value || null)}
+                  className="text-xs border border-border-soft rounded-lg px-2 py-1 text-charcoal-500 bg-surface-2 focus:outline-none"
+                >
+                  {devices.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.id.slice(0, 8)}… {d.active ? "●" : "○"}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {sLoading ? (
+              <div className="h-40 flex items-center justify-center">
+                <div className="h-6 w-6 animate-spin rounded-full border-2 border-mint-500 border-t-transparent" />
+              </div>
+            ) : acetoneData.length === 0 ? (
+              <EmptyChart label="ยังไม่มีข้อมูล breath acetone" />
+            ) : (
+              <>
+                <ResponsiveContainer width="100%" height={180}>
+                  <LineChart data={acetoneData} margin={{ left: -20, right: 8 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#EEEDE8" />
+                    <XAxis dataKey="date" tick={{ fontSize: 11, fill: "#6B6B65" }} stroke="#D9D7D0" />
+                    <YAxis domain={[0, "auto"]} tick={{ fontSize: 11, fill: "#6B6B65" }} stroke="#D9D7D0" />
+                    <Tooltip
+                      contentStyle={{ borderRadius: 10, border: "1px solid #EEEDE8", fontSize: 12 }}
+                      formatter={(v, _name, props) => [
+                        `${v} ppm (${props.payload?.label ?? ""})`,
+                        "Acetone",
+                      ]}
+                    />
+                    <ReferenceLine y={2} stroke="#F59E0B" strokeDasharray="4 3" label={{ value: "Moderate", fontSize: 10, fill: "#B45309" }} />
+                    <ReferenceLine y={5} stroke="#EF4444" strokeDasharray="4 3" label={{ value: "High", fontSize: 10, fill: "#B91C1C" }} />
+                    <Line
+                      type="monotone"
+                      dataKey="value"
+                      stroke="#00C896"
+                      strokeWidth={2}
+                      dot={(props) => {
+                        const { cx, cy, payload } = props;
+                        const color = ACETONE_ZONE_COLOR[payload.label] ?? "#9CA3AF";
+                        return <circle key={`dot-${cx}-${cy}`} cx={cx} cy={cy} r={4} fill={color} stroke="white" strokeWidth={1.5} />;
+                      }}
+                      activeDot={{ r: 6 }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+                <div className="flex gap-3 mt-3 flex-wrap">
+                  {[
+                    { label: "low",        color: "#00C896", text: "ต่ำ (<2 ppm)" },
+                    { label: "moderate",   color: "#F59E0B", text: "ปานกลาง (2-5 ppm)" },
+                    { label: "high",       color: "#EF4444", text: "สูง (>5 ppm)" },
+                    { label: "unreliable", color: "#9CA3AF", text: "ไม่น่าเชื่อถือ" },
+                  ].map(({ label, color, text }) => (
+                    <div key={label} className="flex items-center gap-1.5 text-xs text-muted">
+                      <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: color }} />
+                      {text}
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
