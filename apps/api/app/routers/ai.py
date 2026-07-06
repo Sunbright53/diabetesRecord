@@ -1,3 +1,4 @@
+import os
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlmodel import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -167,13 +168,25 @@ async def chat(
 
     system_prompt = llm_guardrail.build_system_prompt(user_context, sensor_data)
 
-    # LLM call — stub for NSC demo; replace with actual Anthropic API call
-    # In production: call anthropic.Anthropic().messages.create(...)
-    raw_reply = (
-        f"ขอบคุณสำหรับคำถาม: '{body.message}'\n\n"
-        "ตอนนี้ระบบ AI Coach กำลังอยู่ในขั้นตอน demo — "
-        "กรุณาเชื่อมต่อ Anthropic API key ใน settings เพื่อใช้งาน AI Coach แบบเต็มรูปแบบ"
-    )
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not api_key:
+        raw_reply = (
+            "ขอโทษค่ะ — ระบบ AI Coach ยังไม่ได้ตั้งค่า ANTHROPIC_API_KEY "
+            "กรุณาติดต่อผู้ดูแลระบบ"
+        )
+    else:
+        try:
+            import anthropic
+            client = anthropic.Anthropic(api_key=api_key)
+            message = client.messages.create(
+                model="claude-haiku-4-5-20251001",
+                max_tokens=1024,
+                system=system_prompt,
+                messages=[{"role": "user", "content": body.message}],
+            )
+            raw_reply = message.content[0].text
+        except Exception as exc:
+            raw_reply = f"เกิดข้อผิดพลาดในการเชื่อมต่อ AI: {str(exc)[:120]}"
 
     safe_reply = llm_guardrail.sanitise_response(raw_reply, lang="th")
 

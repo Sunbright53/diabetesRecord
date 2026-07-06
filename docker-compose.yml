@@ -124,9 +124,9 @@ services:
       - mqtt_data:/mosquitto/data
       - mqtt_log:/mosquitto/log
     healthcheck:
-      test: ["CMD-SHELL", "mosquitto_sub -h localhost -p 1883 -u admin -P Admin2026! -t '$$SYS/broker/uptime' -C 1 -W 3"]
+      test: ["CMD-SHELL", "mosquitto_pub -h localhost -p 1883 -u admin -P Admin2026! -t '$SYS/healthcheck' -m ok -q 0"]
       interval: 15s
-      timeout: 8s
+      timeout: 5s
       retries: 3
     networks:
       - edge
