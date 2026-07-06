@@ -1,48 +1,79 @@
 """
 MetaBreath AI inference service.
 
-Provides risk classification and 7-day trend prediction endpoints.
-At NSC demo time: uses rule-based fallback + pre-trained sklearn/XGBoost
-models loaded from disk (models/*.joblib).
+Models trained on metabreath_acetone_delta_demo_dataset.csv (1199 samples).
+Training: apps/api/notebooks/train_models.py
+Models:   apps/api/models/{rf,xgb}_classifier.joblib + feature_columns.json
 
-Model training is done in notebooks/02_random_forest.ipynb and
-notebooks/03_xgboost_optuna.ipynb. Deploy by copying *.joblib files
-into apps/api/models/.
+Feature order and label mapping are read from feature_columns.json at startup
+so inference always matches training exactly.
 """
 from __future__ import annotations
 
-import os
 import json
+import os
 from datetime import datetime, timedelta
 from typing import Optional
 
 _MODEL_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "models")
 
-# Lazy-loaded models (populated on first call)
 _rf_model = None
 _xgb_model = None
+_feature_columns: list[str] = []
+_label_classes: list[str] = []   # ordered by integer class index (from LabelEncoder)
 
 
 def _load_models():
-    global _rf_model, _xgb_model
-    if _rf_model is not None:
+    global _rf_model, _xgb_model, _feature_columns, _label_classes
+    if _feature_columns:
         return
     try:
         import joblib
+
+        meta_path = os.path.join(_MODEL_DIR, "feature_columns.json")
+        if os.path.exists(meta_path):
+            with open(meta_path) as f:
+                meta = json.load(f)
+            _feature_columns = meta["feature_columns"]
+            # label_encoder_classes is the alphabetically-sorted mapping from int→label
+            _label_classes = meta.get("label_encoder_classes", meta.get("label_classes", ["low", "moderate", "high"]))
+
         rf_path = os.path.join(_MODEL_DIR, "rf_classifier.joblib")
         xgb_path = os.path.join(_MODEL_DIR, "xgb_classifier.joblib")
         if os.path.exists(rf_path):
             _rf_model = joblib.load(rf_path)
         if os.path.exists(xgb_path):
             _xgb_model = joblib.load(xgb_path)
-    except ImportError:
-        pass  # joblib not available — use rule-based fallback
+    except Exception:
+        pass
+
+
+def _build_feature_vector(features: dict) -> list[float]:
+    """
+    Build a feature vector in the exact order the models expect.
+
+    Accepts keys using inference naming (temp_c, humidity_pct) and maps
+    them to training naming (temperature, humidity). Missing derived
+    features (ketosis_index, metabolic_score, fat_burning_index) default
+    to 0 — acetone_delta alone is sufficient for correct classification.
+    """
+    alias = {
+        "temp_c": "temperature",
+        "humidity_pct": "humidity",
+    }
+    lookup = {}
+    for k, v in features.items():
+        lookup[alias.get(k, k)] = v if v is not None else 0.0
+
+    return [float(lookup.get(col, 0.0)) for col in _feature_columns]
 
 
 def _rule_based_risk(acetone_delta: Optional[float]) -> dict:
     """
-    Rule-based classifier matching MetaBreath demo dataset boundaries (NSC 2026).
-    Labels: low / moderate / high / unreliable
+    Reference thresholds from NSC 2026 guidelines (aจารย์):
+      healthy / low ketosis: < 30 ppm
+      moderate ketosis:      30–74 ppm
+      high / DKA risk:       ≥ 75 ppm
     """
     if acetone_delta is None or acetone_delta < 0:
         return {"label": "unreliable", "metabolic_risk_index": None, "confidence_score": 0.0}
@@ -56,93 +87,56 @@ def _rule_based_risk(acetone_delta: Optional[float]) -> dict:
 
 def predict_risk(features: dict) -> dict:
     """
-    Predict metabolic risk from a feature dict.
+    Predict metabolic risk label from sensor features.
 
-    features keys: acetone_delta, quality_score, reliability_score,
-                   breath_duration, slope, time_to_peak, recovery_rate,
-                   temp_c, humidity_pct.
-
+    Priority: XGBoost → RandomForest → rule-based fallback.
     Returns: label, metabolic_risk_index, confidence_score, model_used.
-    If confidence_score < 0.6, label is overridden to 'unreliable' and
-    the caller should prompt device recalibration.
     """
     _load_models()
 
-    acetone = features.get("acetone_delta")
     reliability = features.get("reliability_score", 100) or 100
-
-    # Low reliability → return unreliable without running model
     if reliability < 40:
         return {
             "label": "unreliable",
             "metabolic_risk_index": None,
-            "confidence_score": reliability / 100,
+            "confidence_score": round(reliability / 100, 4),
             "model_used": "reliability_gate",
             "recalibration_needed": True,
         }
 
-    # Try XGBoost model first (better calibrated)
-    if _xgb_model is not None:
+    feat_vec = _build_feature_vector(features)
+
+    for model, model_name in [(_xgb_model, "xgboost"), (_rf_model, "random_forest")]:
+        if model is None:
+            continue
         try:
             import numpy as np
-            feat_arr = np.array([[
-                features.get("acetone_delta", 0),
-                features.get("quality_score", 100),
-                features.get("reliability_score", 100),
-                features.get("breath_duration", 3),
-                features.get("slope", 0),
-                features.get("time_to_peak", 0),
-                features.get("recovery_rate", 0),
-                features.get("temp_c", 20),
-                features.get("humidity_pct", 65),
-            ]])
-            proba = _xgb_model.predict_proba(feat_arr)[0]
-            pred_class = int(proba.argmax())
+            arr = np.array([feat_vec])
+            proba = model.predict_proba(arr)[0]
+            pred_idx = int(proba.argmax())
             confidence = float(proba.max())
-            labels = ["low", "moderate", "high"]
-            label = labels[pred_class] if pred_class < len(labels) else "unreliable"
+
+            # Map integer → label using label_encoder_classes (alphabetical order)
+            if _label_classes and pred_idx < len(_label_classes):
+                label = _label_classes[pred_idx]
+            else:
+                label = ["low", "moderate", "high"][min(pred_idx, 2)]
+
             if confidence < 0.6:
                 label = "unreliable"
+
+            label_to_mri = {"low": 0, "moderate": 1, "high": 2, "unreliable": None}
             return {
                 "label": label,
-                "metabolic_risk_index": pred_class if confidence >= 0.6 else None,
+                "metabolic_risk_index": label_to_mri.get(label),
                 "confidence_score": round(confidence, 4),
-                "model_used": "xgboost",
+                "model_used": model_name,
                 "recalibration_needed": confidence < 0.6,
             }
         except Exception:
-            pass
+            continue
 
-    # RF fallback
-    if _rf_model is not None:
-        try:
-            import numpy as np
-            feat_arr = np.array([[
-                features.get("acetone_delta", 0),
-                features.get("quality_score", 100),
-                features.get("reliability_score", 100),
-                features.get("breath_duration", 3),
-                features.get("slope", 0),
-            ]])
-            proba = _rf_model.predict_proba(feat_arr)[0]
-            pred_class = int(proba.argmax())
-            confidence = float(proba.max())
-            labels = ["low", "moderate", "high"]
-            label = labels[pred_class] if pred_class < len(labels) else "unreliable"
-            if confidence < 0.6:
-                label = "unreliable"
-            return {
-                "label": label,
-                "metabolic_risk_index": pred_class if confidence >= 0.6 else None,
-                "confidence_score": round(confidence, 4),
-                "model_used": "random_forest",
-                "recalibration_needed": confidence < 0.6,
-            }
-        except Exception:
-            pass
-
-    # Pure rule-based fallback
-    result = _rule_based_risk(acetone)
+    result = _rule_based_risk(features.get("acetone_delta"))
     result["model_used"] = "rule_based"
     result["recalibration_needed"] = result["confidence_score"] < 0.6
     return result
@@ -150,13 +144,8 @@ def predict_risk(features: dict) -> dict:
 
 def predict_trend(readings: list[dict], horizon_days: int = 7) -> dict:
     """
-    Predict acetone trend over the next horizon_days.
-
-    readings: list of dicts with keys time (datetime) and acetone_delta (float),
-              ordered oldest-first. Minimum 3 points required.
-
-    Returns: trend_direction, slope_ppm_per_day, predicted_points (list of
-             {time, predicted_acetone}), confidence.
+    Linear regression trend on acetone_delta over time.
+    Minimum 3 readings required.
     """
     if len(readings) < 3:
         return {
@@ -166,12 +155,14 @@ def predict_trend(readings: list[dict], horizon_days: int = 7) -> dict:
             "confidence": 0.0,
         }
 
-    # Simple linear regression on acetone_delta vs time
-    times = [r["time"] if isinstance(r["time"], datetime) else datetime.fromisoformat(str(r["time"])) for r in readings]
-    values = [r.get("acetone_delta") or 0.0 for r in readings]
+    times = [
+        r["time"] if isinstance(r["time"], datetime) else datetime.fromisoformat(str(r["time"]))
+        for r in readings
+    ]
+    values = [float(r.get("acetone_delta") or 0.0) for r in readings]
 
     t0 = times[0]
-    xs = [(t - t0).total_seconds() / 86400 for t in times]  # days since first reading
+    xs = [(t - t0).total_seconds() / 86400 for t in times]
 
     import statistics as _stats
     x_mean = _stats.mean(xs)
@@ -185,15 +176,14 @@ def predict_trend(readings: list[dict], horizon_days: int = 7) -> dict:
     last_x = xs[-1]
     last_time = times[-1]
 
-    predicted_points = []
-    for d in range(1, horizon_days + 1):
-        pred_val = max(0.0, intercept + slope * (last_x + d))
-        predicted_points.append({
+    predicted_points = [
+        {
             "time": (last_time + timedelta(days=d)).isoformat(),
-            "predicted_acetone": round(pred_val, 4),
-        })
+            "predicted_acetone": round(max(0.0, intercept + slope * (last_x + d)), 4),
+        }
+        for d in range(1, horizon_days + 1)
+    ]
 
-    # Confidence: based on R² of the linear fit
     ss_res = sum((v - (intercept + slope * x)) ** 2 for x, v in zip(xs, values))
     ss_tot = sum((v - y_mean) ** 2 for v in values)
     r2 = 1 - (ss_res / ss_tot) if ss_tot > 0 else 0.0

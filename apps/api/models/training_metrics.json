@@ -1,0 +1,35 @@
+{
+  "rf": {
+    "f1_weighted_test": 1.0,
+    "f1_weighted_cv_mean": 0.9967,
+    "f1_weighted_cv_std": 0.0067
+  },
+  "xgb": {
+    "f1_weighted_test": 1.0,
+    "f1_weighted_cv_mean": 0.9992,
+    "f1_weighted_cv_std": 0.0017
+  },
+  "n_train": 959,
+  "n_test": 240,
+  "dataset_rows": 1199,
+  "feature_columns": [
+    "acetone_delta",
+    "quality_score",
+    "reliability_score",
+    "ambient_voc",
+    "pressure_mean",
+    "pressure_std",
+    "breath_duration",
+    "temperature",
+    "humidity",
+    "environment_penalty",
+    "ketosis_index",
+    "metabolic_score",
+    "fat_burning_index"
+  ],
+  "labels": [
+    "low",
+    "moderate",
+    "high"
+  ]
+}

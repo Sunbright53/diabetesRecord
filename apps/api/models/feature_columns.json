@@ -1,0 +1,27 @@
+{
+  "feature_columns": [
+    "acetone_delta",
+    "quality_score",
+    "reliability_score",
+    "ambient_voc",
+    "pressure_mean",
+    "pressure_std",
+    "breath_duration",
+    "temperature",
+    "humidity",
+    "environment_penalty",
+    "ketosis_index",
+    "metabolic_score",
+    "fat_burning_index"
+  ],
+  "label_classes": [
+    "low",
+    "moderate",
+    "high"
+  ],
+  "label_encoder_classes": [
+    "high",
+    "low",
+    "moderate"
+  ]
+}
