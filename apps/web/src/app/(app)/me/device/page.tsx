@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { api, DeviceOut } from "@/lib/api";
+import { api, type DeviceOut } from "@/lib/api";
 
 interface PairResponse {
   device_id: string;
@@ -58,22 +58,42 @@ export default function DeviceSettingsPage() {
           <h2 className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-3">อุปกรณ์ที่เชื่อมต่อแล้ว</h2>
           <div className="space-y-3">
             {devices.map((d) => (
-              <div key={d.id} className="bg-white border border-gray-200 rounded-xl p-4 flex items-center gap-4">
-                <div className={`w-3 h-3 rounded-full ${d.active ? "bg-emerald-400" : "bg-gray-300"}`} />
-                <div className="flex-1">
-                  <div className="font-mono text-sm text-gray-800">{d.id.slice(0, 8)}…</div>
-                  <div className="text-xs text-gray-500 mt-0.5">
-                    {d.sensor_model} · {d.kind}
-                    {d.needs_recalibration && (
-                      <span className="ml-2 text-amber-600 font-medium">⚠ ต้อง calibrate</span>
+              <div key={d.id} className="bg-white border border-gray-200 rounded-xl p-4">
+                <div className="flex items-center gap-4">
+                  <div className={`w-3 h-3 rounded-full shrink-0 ${d.active ? "bg-emerald-400" : "bg-gray-300"}`} />
+                  <div className="flex-1">
+                    <div className="font-mono text-sm text-gray-800">{d.id.slice(0, 8)}…</div>
+                    <div className="text-xs text-gray-500 mt-0.5">
+                      {d.sensor_model} · {d.kind}
+                      {d.needs_recalibration && (
+                        <span className="ml-2 text-amber-600 font-medium">⚠ ต้อง calibrate</span>
+                      )}
+                    </div>
+                    {d.last_calibrated_at && (
+                      <div className="text-xs text-gray-400 mt-0.5">
+                        Calibrated: {new Date(d.last_calibrated_at).toLocaleDateString("th-TH")}
+                      </div>
                     )}
                   </div>
                 </div>
-                {d.last_calibrated_at && (
-                  <div className="text-xs text-gray-400">
-                    Calibrated: {new Date(d.last_calibrated_at).toLocaleDateString("th-TH")}
-                  </div>
-                )}
+                <div className="flex gap-2 mt-3">
+                  <Link
+                    href={`/me/device/${d.id}/calibrate`}
+                    className={`flex-1 text-center text-xs font-semibold py-2 rounded-lg border transition ${
+                      d.needs_recalibration
+                        ? "bg-amber-500 border-amber-500 text-white hover:bg-amber-600"
+                        : "border-gray-200 text-gray-600 hover:bg-gray-50"
+                    }`}
+                  >
+                    Calibrate
+                  </Link>
+                  <Link
+                    href={`/me/device/${d.id}/report`}
+                    className="flex-1 text-center text-xs font-semibold py-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition"
+                  >
+                    Report
+                  </Link>
+                </div>
               </div>
             ))}
           </div>

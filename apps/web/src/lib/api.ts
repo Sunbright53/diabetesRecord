@@ -422,6 +422,18 @@ export const api = {
       request<SensorReadingOut[]>(`/sensor/readings?device_id=${deviceId}&days=${days}`),
     calibrationReport: (deviceId: string) =>
       request<CalibrationReportOut>(`/sensor/device/${deviceId}/calibration/report`),
+    calibrateDevice: (deviceId: string, data: {
+      baseline_voc: number;
+      baseline_temp?: number;
+      baseline_humidity?: number;
+      baseline_pressure?: number;
+      method?: string;
+      notes?: string;
+    }) =>
+      request<{ id: string; drift_score: number; needs_recalibration?: boolean }>(
+        `/sensor/device/${deviceId}/calibrate`,
+        { method: "POST", body: JSON.stringify(data) }
+      ),
     pairDevice: (data?: { kind?: string; sensor_model?: string; firmware_version?: string }) =>
       request<{
         device_id: string; mqtt_topic: string; mqtt_user: string;

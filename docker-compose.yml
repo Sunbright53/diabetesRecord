@@ -120,12 +120,13 @@ services:
     volumes:
       - ./infra/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
       - ./infra/mosquitto/passwd:/mosquitto/config/passwd:ro
+      - ./infra/mosquitto/acl:/mosquitto/config/acl:ro
       - mqtt_data:/mosquitto/data
       - mqtt_log:/mosquitto/log
     healthcheck:
-      test: ["CMD-SHELL", "mosquitto_sub -t '$$SYS/#' -C 1 | head -n 1 | grep -v Error"]
+      test: ["CMD-SHELL", "mosquitto_sub -h localhost -p 1883 -u admin -P Admin2026! -t '$$SYS/broker/uptime' -C 1 -W 3"]
       interval: 15s
-      timeout: 5s
+      timeout: 8s
       retries: 3
     networks:
       - edge
