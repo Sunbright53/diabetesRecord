@@ -1,0 +1,88 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Cheewarun MCP Data Contract",
+  "description": "JSON Schema for all data exchanged between Cheewarun API and MCP server",
+  "definitions": {
+    "SensorReading": {
+      "type": "object",
+      "properties": {
+        "time": { "type": "string", "format": "date-time" },
+        "device_id": { "type": "string", "format": "uuid" },
+        "ambient_voc": { "type": ["number", "null"] },
+        "breath_voc": { "type": ["number", "null"] },
+        "acetone_delta": { "type": ["number", "null"], "description": "breath_voc - ambient_voc, calibration-corrected (ppm)" },
+        "pressure_mean": { "type": ["number", "null"] },
+        "pressure_std": { "type": ["number", "null"] },
+        "breath_duration": { "type": ["number", "null"], "description": "seconds" },
+        "quality_score": { "type": ["number", "null"], "minimum": 0, "maximum": 100 },
+        "reliability_score": { "type": ["number", "null"], "minimum": 0, "maximum": 100 },
+        "environment_penalty": { "type": ["number", "null"], "minimum": 0, "maximum": 50 },
+        "slope": { "type": ["number", "null"] },
+        "time_to_peak": { "type": ["number", "null"] },
+        "recovery_rate": { "type": ["number", "null"] },
+        "metabolic_risk_index": { "type": ["integer", "null"], "enum": [0, 1, 2, 3, null], "description": "0=healthy 1=fat_burning 2=ketosis 3=diabetes" },
+        "confidence_score": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+        "label": { "type": ["string", "null"], "enum": ["healthy", "fat_burning", "ketosis", "diabetes", "unreliable", null] }
+      },
+      "required": ["time", "device_id"]
+    },
+    "TrendResponse": {
+      "type": "object",
+      "properties": {
+        "device_id": { "type": "string", "format": "uuid" },
+        "trend_direction": { "type": "string", "enum": ["increasing", "decreasing", "stable", "insufficient_data"] },
+        "slope_ppm_per_day": { "type": ["number", "null"] },
+        "predicted_points": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "time": { "type": "string", "format": "date-time" },
+              "predicted_acetone": { "type": "number" }
+            }
+          }
+        },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "n_readings_used": { "type": "integer" }
+      }
+    },
+    "CalibrationReport": {
+      "type": "object",
+      "properties": {
+        "device_id": { "type": "string", "format": "uuid" },
+        "report_generated_at": { "type": "string", "format": "date-time" },
+        "lod_ppm": { "type": "number", "description": "Limit of Detection in ppm" },
+        "repeatability_cv_pct": { "type": "number", "description": "Coefficient of Variation %" },
+        "drift_slope_ppm_per_day": { "type": "number" },
+        "cross_sensitivity_note": { "type": "string" },
+        "n_calibrations": { "type": "integer" },
+        "latest_drift_score": { "type": "number", "minimum": 0, "maximum": 1 },
+        "needs_recalibration": { "type": "boolean" }
+      }
+    },
+    "PilotSession": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "format": "uuid" },
+        "user_id": { "type": "string", "format": "uuid" },
+        "cohort": { "type": "string", "enum": ["5day_20p", "14day_10p"] },
+        "day_number": { "type": "integer", "minimum": 1, "maximum": 14 },
+        "timepoint": { "type": "string", "enum": ["fasting", "post_meal_60", "post_meal_120"] },
+        "homa_ir": { "type": ["number", "null"] },
+        "blood_glucose": { "type": ["number", "null"] },
+        "blood_ketone_mmol": { "type": ["number", "null"] }
+      },
+      "required": ["cohort", "day_number", "timepoint"]
+    },
+    "AcetoneLabelMap": {
+      "type": "object",
+      "description": "Reference label mapping for breath acetone (from MetaBreath documentation)",
+      "properties": {
+        "healthy": { "type": "string", "const": "0.3–0.9 ppm" },
+        "fat_burning": { "type": "string", "const": "1–5 ppm" },
+        "ketosis": { "type": "string", "const": "5–40 ppm" },
+        "diabetes_dka": { "type": "string", "const": ">75 ppm" }
+      }
+    }
+  }
+}

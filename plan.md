@@ -11,6 +11,8 @@
 - **สถานะปัจจุบัน**: index.html เดียว 4,319 บรรทัด (Firebase + MQTT + Chart.js)
 - **เป้าหมาย**: ย้ายเป็น web app แยกชั้น + Docker + UI/UX ใหม่ + gamification/social
 
+> 📎 **Companion plan**: [`plan_metabreath.md`](plan_metabreath.md) — แผน NSC alignment (Phase 5/6 ปรับใหม่ตาม Judge Comments + pilot study + MCP + LSTM)
+
 > วิธีใช้ไฟล์นี้: แต่ละ Phase ระบุช่วงวันที่ + checkbox ให้ tick ทีละอัน. เวลาสั่งงานผมให้อ้าง "ทำ Phase 1 ข้อ 3" ก็ได้.
 
 ---
@@ -130,66 +132,79 @@ diabetesRecord/                  (repo root — จะ rename เป็น cheew
 **เป้าหมาย**: repo skeleton + docker-compose รันได้ + nginx routing บน VPS
 **ช่วง**: 2026-07-04 → 2026-07-11 (1 สัปดาห์)
 
-- [ ] 0.1 สร้าง git branch `rebuild` และย้าย `index.html` ปัจจุบันไป `legacy/`
-- [ ] 0.2 สมัคร DuckDNS → จอง `cheewarun.duckdns.org` → เพิ่ม A record → 45.136.236.57
-- [ ] 0.3 สร้าง repo structure ตามหัวข้อ 3 (folder ว่าง + placeholder README)
-- [ ] 0.4 เขียน `.env.example` + `.gitignore` (block `.env`, `*.pem`, `mosquitto/passwd`)
-- [ ] 0.5 เขียน `docker-compose.yml` ครบทุก service (yaml only, ไม่มี business logic)
-- [ ] 0.6 เขียน `apps/web/Dockerfile` + Next.js scaffold ว่าง (Tailwind + shadcn init)
-- [ ] 0.7 เขียน `apps/api/Dockerfile` + FastAPI scaffold ว่าง (`/healthz` เดียวก็พอ)
-- [ ] 0.8 SSH เข้า VPS → `git clone` เป็น `/root/cheewarun` → `docker compose up -d` → verify containers up
-- [ ] 0.9 เขียน `nginx/cheewarun.conf` → copy ไป `/etc/nginx/sites-enabled/` → `nginx -t && systemctl reload nginx`
-- [ ] 0.10 ยิง `certbot --nginx -d cheewarun.duckdns.org` → verify `https://cheewarun.duckdns.org/healthz` ตอบ 200
-- [ ] 0.11 ตั้ง `infra/backup.sh` cron ทุกคืน 03:00 → `/backups/cheewarun/`
-- **ส่งมอบ**: URL live ที่ตอบ healthz + docker ps เห็น 6 services
+- [x] 0.1 สร้าง git branch `rebuild` และย้าย `index.html` ปัจจุบันไป `legacy/`
+- [x] 0.2 DuckDNS `cheewarun.duckdns.org` → 45.136.236.57 ✓ (verified: dig + all pages 200 via public URL)
+- [x] 0.3 สร้าง repo structure ตามหัวข้อ 3
+- [x] 0.4 เขียน `.env.example` + `.gitignore`
+- [x] 0.5 เขียน `docker-compose.yml` ครบ 5 services (web/api/db/redis/mqtt)
+- [x] 0.6 Next.js 16 scaffold (Tailwind, standalone output) + dependencies
+- [x] 0.7 FastAPI scaffold (`/healthz` ✓) + requirements.txt + alembic skeleton
+- [x] 0.8 rsync ส่งไป VPS `/root/cheewarun` → docker compose up → **ทุก service healthy**
+      - web :3010 ✓, api :8010 ✓ (healthz), db (healthy) ✓, redis (healthy) ✓, mqtt ✓
+      - RAM หลัง stack ขึ้น: used 6.3GiB / 7.8GiB (เหลือ ~1.1 GiB available — OK)
+- [x] 0.9 nginx config เพิ่มแล้ว (`/etc/nginx/sites-enabled/cheewarun`) port 80 ทำงาน
+      - `curl -H "Host: cheewarun.duckdns.org" http://localhost/api/healthz` → 200 ✓
+      - ⚠️ port 443 conflict: `trigger-finger-exercise-caddy` ครอง 443 ด้วย TLS-ALPN-01
+      - แก้ใน 0.10 พร้อมกับ DuckDNS setup
+- [ ] 0.10 ยิง certbot → HTTPS ← **ต้องทำ 0.2 ก่อน** (DuckDNS) แล้วแก้ 443 conflict
+- [x] 0.11 `infra/backup.sh` cron 03:00 UTC ตั้งแล้ว, test OK → `/backups/cheewarun/2026-07-04.sql.gz`
+- **ส่งมอบ**: ✅ 9/11 tasks done. HTTP ใช้ได้แล้ว — รอ DuckDNS เพื่อ HTTPS
+
+> **หมายเหตุ 443 conflict**: trigger-finger Caddy ใช้ TLS-ALPN-01 (port 443 เท่านั้น, port 80 free)
+> แก้ใน step 0.10: ย้าย trigger-finger bind → `127.0.0.1:7443`, nginx รับ 443 แทน + route ทั้งสองโดเมน
 
 ### Phase 1 — Auth + Data Foundation
 **ช่วง**: 2026-07-12 → 2026-07-25 (2 สัปดาห์)
 
-- [ ] 1.1 Alembic init + baseline migration ว่าง
-- [ ] 1.2 SQLModel: `users`, `profiles`, `questionnaires`
-- [ ] 1.3 SQLModel: `ketone_logs`, `weight_logs`, `meal_logs`, `activity_logs`
-- [ ] 1.4 SQLModel: `sensor_readings` (+ Timescale hypertable), `devices`
-- [ ] 1.5 SQLModel: gamification set (`xp_ledger`, `streaks`, `badges`, `user_badges`, `quests`, `quest_progress`)
-- [ ] 1.6 SQLModel: social (`friendships`, `friend_codes`, `challenges`)
-- [ ] 1.7 SQLModel: `articles`, `article_reads`, `push_subscriptions`, `reminders`, `notification_log`
-- [ ] 1.8 SQLModel: AI (`ai_providers`, `ai_sessions`, `ai_messages`, `ai_call_log`)
-- [ ] 1.9 Alembic migration + run บน VPS
-- [ ] 1.10 FastAPI-Users setup: `/auth/register`, `/auth/login`, `/auth/refresh`, `/auth/me`
-- [ ] 1.11 seed script: badges, quest templates, ai_providers (openai=1, gemini=2, claude=3)
-- [ ] 1.12 shared-types generator (openapi → ts-client)
-- **ส่งมอบ**: register+login+me ผ่าน curl / Bruno collection
+- [x] 1.1 Alembic init + baseline migration ว่าง
+- [x] 1.2 SQLModel: `users`, `profiles`, `questionnaires`
+- [x] 1.3 SQLModel: `ketone_logs`, `weight_logs`, `meal_logs`, `activity_logs`
+- [x] 1.4 SQLModel: `sensor_readings` (+ Timescale hypertable), `devices`
+- [x] 1.5 SQLModel: gamification set (`xp_ledger`, `streaks`, `badges`, `user_badges`, `quests`, `quest_progress`)
+- [x] 1.6 SQLModel: social (`friendships`, `friend_codes`, `challenges`)
+- [x] 1.7 SQLModel: `articles`, `article_reads`, `push_subscriptions`, `reminders`, `notification_log`
+- [x] 1.8 SQLModel: AI (`ai_providers`, `ai_sessions`, `ai_messages`, `ai_call_log`)
+- [x] 1.9 Alembic migration + run บน VPS (ea0d46cf1085) — TimescaleDB hypertable ✓
+- [x] 1.10 FastAPI auth: `/auth/register` 201 ✓, `/auth/login` ✓, `/auth/refresh` ✓, `/auth/me` ✓
+- [x] 1.11 seed script: 3 ai_providers, 12 badges, 6 quest templates → Seed done ✓
+- [x] 1.12 shared-types generator (openapi → ts-client) — `packages/shared-types/schema.ts` + `index.ts` ✓
+- **ส่งมอบ**: ✅ **12/12 done** — auth endpoints ผ่านทุก curl test, DB live บน VPS, shared-types พร้อมใช้
 
 ### Phase 2 — Web scaffold + Onboarding + Log
 **ช่วง**: 2026-07-26 → 2026-08-08 (2 สัปดาห์)
 
-- [ ] 2.1 ตั้ง Tailwind theme tokens (mint/peach/off-white) + typography (Sarabun + Inter)
-- [ ] 2.2 shadcn/ui: button, input, card, dialog, tabs, sheet, toast
-- [ ] 2.3 Layout: sidebar desktop / bottom nav mobile
-- [ ] 2.4 หน้า `/login` `/register`
-- [ ] 2.5 Wizard `/onboarding` (4 step: goal / body / schedule / device)
-- [ ] 2.6 หน้า `/home` (Today card + streak + quests placeholder)
-- [ ] 2.7 หน้า `/log` tabs: Ketone / Weight / Meal / Activity — form + validation
-- [ ] 2.8 API endpoints `/readings/*`, `/logs/*`
-- [ ] 2.9 หน้า `/trends` (Recharts, 7/30/90 วัน)
-- [ ] 2.10 Auth context + protected route middleware
-- **ส่งมอบ**: user register → onboarding → log ketone → เห็นค่าใน chart
+- [x] 2.1 ตั้ง Tailwind v4 theme tokens (mint/peach/off-white) + typography (Sarabun + Inter) — `globals.css` @theme block
+- [x] 2.2 Custom UI: button (CVA), input, card, badge, tabs, toaster (ไม่ใช้ shadcn — built from scratch)
+- [x] 2.3 Layout: sidebar desktop + bottom nav mobile (`(app)/layout.tsx`)
+- [x] 2.4 หน้า `/login` `/register` — zod form, goal selector
+- [x] 2.5 Wizard `/onboarding` (3 step: goal confirm / body metrics / done)
+- [x] 2.6 หน้า `/home` (Today card + streak + quests placeholder + quick actions)
+- [x] 2.7 หน้า `/log` tabs: Ketone / Weight / Meal / Activity — form + validation + source radio
+- [x] 2.8 API endpoints: `GET/POST /logs/ketone|weight|meal|activity`, `PATCH /profile`
+- [x] 2.9 หน้า `/trends` (Recharts LineChart, 7/30/90 วัน, reference line ketosis)
+- [x] 2.10 Auth context (`lib/auth.tsx`) + protected route guard in `(app)/layout.tsx`
+- **ส่งมอบ**: ✅ **10/10 done** — code complete; deploy ต้องใช้ `bash scripts/build-web.sh` (Docker Compose v5 bake bug workaround)
 
 ### Phase 3 — Gamification + Reminders + Content
 **ช่วง**: 2026-08-09 → 2026-08-22 (2 สัปดาห์)
 
-- [ ] 3.1 XP ledger logic + api `/me/xp`
-- [ ] 3.2 Streak calc (timezone-aware) + freeze rule
-- [ ] 3.3 Daily quest generator (Celery Beat 00:05) + `/me/quests/today`
-- [ ] 3.4 Badge criteria evaluator (post-write hook)
-- [ ] 3.5 Level bar + toast/animation (Framer Motion)
-- [ ] 3.6 หน้า `/me` (profile + streak calendar heatmap + badges grid)
-- [ ] 3.7 MDX content pipeline (`content/articles/*.mdx`) + `/learn` + `/learn/[slug]`
-- [ ] 3.8 `/articles/{slug}/complete` → +10 XP (once)
-- [ ] 3.9 VAPID keys + `/push/subscribe`
-- [ ] 3.10 Reminder CRUD + Celery worker `check_reminders` (1 min tick)
-- [ ] 3.11 seed 5 บทความเริ่มต้น (keto 101, IF basics, exercise starter, ...)
-- **ส่งมอบ**: ได้รับ web push เตือนวัดคีโตน + อ่านบทความจบได้ XP
+- [x] 3.1 XP ledger logic + api `/me/xp` — service + router ✓
+- [x] 3.2 Streak calc (timezone-aware) + freeze rule — `touch_streak()` ✓
+- [x] 3.3 Daily quest generator (Celery Beat 00:05) + `/me/quests/today` ✓
+- [x] 3.4 Badge criteria evaluator — `evaluate_badges()` post-write hook ✓
+- [x] 3.5 Level bar — CSS transition animated XP bar ใน `/me` ✓
+- [x] 3.6 หน้า `/me` — XP bar + streak dots 7 วัน + badges grid ✓
+- [x] 3.7 `/learn` + `/learn/[slug]` — article list + reader ✓ (markdown stored in DB)
+- [x] 3.8 `/articles/{slug}/complete` → XP + quest progress + badge eval ✓
+- [x] 3.9 VAPID keys + `/push/subscribe` + `/push/vapid-public` ✓
+- [x] 3.10 Reminder CRUD + Celery worker `check_reminders` (60s tick) ✓
+- [x] 3.11 seed 5 บทความ (keto-101, if-basics, breath-acetone, metabolic-flexibility, exercise-starter) ✓
+- **ส่งมอบ**: ✅ **11/11 done** — deploy ต้องรัน migration `b3f1a2c4d5e6` + seed script ใหม่
+
+> **Deploy checklist**:
+> 1. `pip install croniter==3.0.3` (ใน requirements.txt แล้ว)
+> 2. `docker compose exec api alembic upgrade head` (migration b3f1a2c4d5e6)
+> 3. `docker compose exec api python /app/../infra/seed/seed.py` (seed articles)
 
 ### Phase 4 — Social + Challenge + League
 **ช่วง**: 2026-08-23 → 2026-09-12 (3 สัปดาห์)
@@ -204,32 +219,30 @@ diabetesRecord/                  (repo root — จะ rename เป็น cheew
 - **ส่งมอบ**: user 2 คนท้าดวลกันเห็น real-time
 
 ### Phase 5 — MQTT / Sensor integration
-**ช่วง**: 2026-09-13 → 2026-09-26 (2 สัปดาห์)
-> เริ่มได้เลยเมื่อ hardware กลับมาที่คุณ
+> ⚠️ **แบ่งย่อยเป็น 5A/5B/5C/5D ใน [plan_metabreath.md §8](plan_metabreath.md)** — ต้อง sync กับ NSC judges' comments
+> เดิม 2 สัปดาห์ → ใหม่ 5A ก่อน 17 กค. (NSC), 5B–5D หลัง NSC
 
-- [ ] 5.1 mosquitto.conf + user/passwd + TLS via nginx wss
-- [ ] 5.2 FastAPI MQTT subscriber (asyncio-mqtt) — persistent connection
-- [ ] 5.3 Device pairing flow (`/me/settings/device` → gen `mqtt_topic` + secret)
-- [ ] 5.4 บันทึก reading → Timescale hypertable
-- [ ] 5.5 WS push `readings:{user_id}` → dashboard realtime
-- [ ] 5.6 `scripts/mqtt_simulator.py` ใช้ทดสอบตอนไม่มี hardware
-- [ ] 5.7 หน้า `/trends` โชว์ VOC realtime + historical
-- **ส่งมอบ**: hardware ยิงเข้ามา → เห็นค่าบน dashboard ภายใน 2 วิ
+**สรุปสั้น** (รายละเอียดใน plan_metabreath.md):
+- **5A** — Sensor data model extension + calibration + drift worker (ก่อน 17 กค.)
+- **5B** — MQTT subscriber + device pairing (เดิม 5.1–5.6)
+- **5C** — Pilot study support (20 คน × 5 วัน × 3 ครั้ง)
+- **5D** — Calibration UI + report (สำหรับ NSC evidence)
 
 ### Phase 6 — Polish + AI + Launch
-**ช่วง**: 2026-09-27 → 2026-10-10 (2 สัปดาห์)
+> ⚠️ **แบ่งย่อยเป็น 6A/6B/6C/6D ใน [plan_metabreath.md §8](plan_metabreath.md)** — เพิ่ม MCP + LSTM ตาม NSC requirements
 
-- [ ] 6.1 AI provider chain module: adapter สำหรับ OpenAI / Gemini / Claude
-- [ ] 6.2 Fallback logic + circuit breaker + timeout 8s/provider
-- [ ] 6.3 `/ai/chat` endpoint (server-side call — key ไม่รั่ว) + log ทุก call
-- [ ] 6.4 Admin UI: จัดการ ai_providers (priority, enable, model)
-- [ ] 6.5 หน้า chat กับ AI coach + session history
+**สรุปสั้น** (รายละเอียดใน plan_metabreath.md):
+- **6A** — Model training notebooks (RF + XGBoost + Optuna + LSTM) with real metrics
+- **6B** — Model serving (`/ai/predict`, `/ai/trend`, confidence score)
+- **6C** — **MCP integration** (server + tools + resources + prompts + guardrail tests)
+- **6D** — LLM coach + refusal policy + expert review
+
+**เดิมของ Phase 6** ที่ยังคงอยู่ (คง PWA/SEO/monitoring):
 - [ ] 6.6 PWA manifest + service worker (offline shell + install)
 - [ ] 6.7 SEO: sitemap, meta tags, OG images (บทความ)
 - [ ] 6.8 Error monitoring (self-hosted GlitchTip หรือ log-only)
 - [ ] 6.9 Load test เบา (k6/vegeta 100 rps 5 นาที)
 - [ ] 6.10 Docs สั้น: user guide + admin runbook
-- **ส่งมอบ**: เปิดใช้จริง + AI coach ใช้งานได้ทั้ง 3 provider
 
 ### Phase 7 — Mobile (Expo)
 **ช่วง**: 2026-10-11 → เปิด
@@ -294,11 +307,22 @@ git push
 # บน VPS
 cd /root/cheewarun
 git pull
-docker compose pull
-docker compose up -d --build
+
+# ⚠️ Docker Compose v5 bake bug: อย่าใช้ "docker compose build web"
+# ใช้สคริปต์นี้แทน (docker build โดยตรง → ไม่มี bake context)
+bash scripts/build-web.sh          # build web + restart
+
+# rebuild API / worker / beat (ยังใช้ compose ได้ปกติ)
+docker compose build api
+docker compose up -d api worker beat
+
+# migrate DB
 docker compose exec api alembic upgrade head
+
 docker compose logs -f api web
 ```
+
+**หมายเหตุ build-web.sh**: ทำ `docker build -t cheewarun-web:latest apps/web/` แล้ว `docker compose up --no-build -d web` — web service ใน compose.yml ใช้ `image: cheewarun-web:latest` จึงไม่ rebuild ซ้ำ
 
 ## 7. Backup
 - Postgres: `pg_dump` ทุกคืน 03:00 → `/backups/cheewarun/YYYY-MM-DD.sql.gz` เก็บ 30 วัน
@@ -317,4 +341,9 @@ docker compose logs -f api web
 
 ## Changelog แผน
 - 2026-07-04 11:15 — สร้างครั้งแรก, ทำ VPS audit, ปรับ blueprint (ตัด Caddy, ใช้ host nginx แทน)
-- 2026-07-04 11:45 — ยืนยัน 4 decision: ชื่อ **Cheewarun** / domain `cheewarun.duckdns.org` / legacy = keep in git, no deploy / AI = auto-fallback OpenAI→Gemini→Claude. เพิ่ม branding tokens + AI chain design
+- 2026-07-04 11:45 — ยืนยัน 4 decision: ชื่อ **Cheewarun** / domain `cheewarun.duckdns.org` / legacy = keep in git / AI = auto-fallback OpenAI→Gemini→Claude
+- 2026-07-04 12:30 — **Phase 0 เสร็จ 9/11 tasks**: deploy VPS ผ่าน rsync, ทุก service up, nginx port 80 routing ✓, backup cron ✓. รอ 0.2 (DuckDNS) เพื่อทำ 0.10 (HTTPS)
+- 2026-07-04 (Session 2) — **Phase 1 เสร็จ 12/12**: auth endpoints ✓, Alembic+TimescaleDB ✓, seed ✓, shared-types ✓
+- 2026-07-04 (Session 3) — **Phase 2 เสร็จ 10/10**: Tailwind v4 theme, UI components, login/register/onboarding/home/log/trends/me pages, log API endpoints. Docker Compose v5 bake bug workaround: ใช้ `scripts/build-web.sh` แทน `docker compose build web`
+- 2026-07-06 — **Phase 3 เสร็จ 11/11**: Gamification (XP/streak/badges/quests), `/learn` articles, Celery Beat tasks, push/reminder CRUD, `/me` upgrade พร้อม level bar + badge grid. Migration `b3f1a2c4d5e6` + 5 บทความ seed พร้อม deploy
+- 2026-07-06 — **NSC audit + plan_metabreath.md**: audit เทียบกับโฟลเดอร์ `แข่งชนะ by Coach Bright_NSC` พบ 4 ช่องโหว่หลัก + judges comments 9 ข้อ → สร้าง companion plan แบ่ง Phase 5/6 เป็น 5A–D + 6A–D เพื่อ deadline NSC 17 กค.

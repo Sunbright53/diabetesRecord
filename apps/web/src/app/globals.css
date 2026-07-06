@@ -1,26 +1,75 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+@theme {
+  /* ─── Brand Colors ─────────────────────────────────── */
+  --color-mint-50:  #E6FDF8;
+  --color-mint-100: #C0F7EC;
+  --color-mint-200: #87EFDA;
+  --color-mint-300: #4DE5C8;
+  --color-mint-400: #22D6B2;
+  --color-mint-500: #00C896;
+  --color-mint-600: #009B74;
+  --color-mint-700: #007355;
+  --color-mint-800: #004D39;
+  --color-mint-900: #00261C;
+
+  --color-peach-50:  #FFF3EE;
+  --color-peach-100: #FFE2D5;
+  --color-peach-200: #FFC5AB;
+  --color-peach-300: #FFA882;
+  --color-peach-400: #FF8A5A;
+  --color-peach-500: #FF7A4A;
+  --color-peach-600: #E05830;
+  --color-peach-700: #B33B1B;
+  --color-peach-800: #80230C;
+  --color-peach-900: #4D1100;
+
+  --color-surface:   #FAFAF7;
+  --color-surface-2: #F4F4F1;
+  --color-border:    #E7E5DF;
+  --color-border-soft: #EEEDE8;
+  --color-muted:     #6B6B65;
+  --color-muted-bg:  #F2F2EE;
+
+  /* Charcoal — warmer than pure gray-900 */
+  --color-charcoal-500: #2A2926;
+  --color-charcoal-600: #1F1E1B;
+  --color-charcoal-700: #17161400;
+
+  /* Accent — subtle gold/bronze for XP, badges, achievements */
+  --color-gold-50:  #FBF7EE;
+  --color-gold-100: #F3E9C9;
+  --color-gold-300: #D9BC7B;
+  --color-gold-500: #B08D57;
+  --color-gold-700: #7C5F35;
+
+  /* ─── Typography ───────────────────────────────────── */
+  --font-sans: var(--font-inter), var(--font-sarabun), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-playfair), Georgia, "Times New Roman", serif;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+/* ─── Base ──────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
+html { height: 100%; }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: var(--color-surface);
+  color: var(--color-charcoal-500);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  min-height: 100%;
 }
+
+/* Numeric stat display — light serif for premium hierarchy */
+.stat-display {
+  font-family: var(--font-display);
+  font-weight: 400;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ─── Scrollbar ─────────────────────────────────────── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #D4D4D2; border-radius: 3px; }

@@ -4,6 +4,7 @@ services:
 
   # ─── Frontend ────────────────────────────────────────────
   web:
+    image: cheewarun-web:latest
     build:
       context: ./apps/web
       dockerfile: Dockerfile
@@ -60,7 +61,7 @@ services:
       context: ./apps/api
       dockerfile: Dockerfile
     restart: unless-stopped
-    command: celery -A app.workers.celery_app beat --loglevel=info --scheduler redbeat.RedBeatScheduler
+    command: celery -A app.workers.celery_app beat --loglevel=info
     env_file: .env
     depends_on:
       redis:
@@ -114,14 +115,38 @@ services:
     image: eclipse-mosquitto:2
     restart: unless-stopped
     ports:
-      - "127.0.0.1:9010:9001"   # WebSocket port (nginx proxies wss:// → here)
+      - "127.0.0.1:1883:1883"   # Standard MQTT — ESP32 connects here
+      - "127.0.0.1:9010:9001"   # WebSocket — browser/nginx connects here
     volumes:
-      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
-      - ./mosquitto/passwd:/mosquitto/config/passwd:ro
+      - ./infra/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./infra/mosquitto/passwd:/mosquitto/config/passwd:ro
       - mqtt_data:/mosquitto/data
       - mqtt_log:/mosquitto/log
+    healthcheck:
+      test: ["CMD-SHELL", "mosquitto_sub -t '$$SYS/#' -C 1 | head -n 1 | grep -v Error"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
     networks:
       - edge
+      - internal
+
+  # ─── MQTT Subscriber (ESP32 → TimescaleDB) ───────────────
+  mqtt-sub:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    command: python -m app.workers.mqtt_subscriber
+    env_file: .env
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      mqtt:
+        condition: service_healthy
+    networks:
       - internal
 
 networks:

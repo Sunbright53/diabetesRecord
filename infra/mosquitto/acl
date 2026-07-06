@@ -1,0 +1,16 @@
+# Mosquitto ACL — Topic access control
+#
+# esp32 user: can publish device readings only
+# api user: can subscribe to all device readings
+# admin user: full access for debugging
+
+user esp32
+topic write metabreath/+/reading
+topic read metabreath/+/cmd
+
+user api
+topic read metabreath/+/reading
+topic write metabreath/+/cmd
+
+user admin
+topic readwrite #
