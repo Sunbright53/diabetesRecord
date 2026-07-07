@@ -7,7 +7,7 @@ import { useDeviceStream } from "@/lib/useDeviceStream";
 import Link from "next/link";
 import {
   FlaskConical, Zap, Target, Moon, Dumbbell,
-  Bell, Database, Wrench, Settings, Shield, ChevronRight, Plus,
+  Bell, Database, Wrench, Settings, Shield, ChevronRight, Plus, Download,
 } from "lucide-react";
 
 const SENSOR_MODES = [
@@ -19,17 +19,32 @@ const SENSOR_MODES = [
 ];
 
 const MENU_ITEMS = [
+  { icon: Download, label: "Download firmware (.ino)", href: (id: string) => `/me/device/${id}/firmware` },
+  { icon: FlaskConical, label: "Calibration & reports", href: (id: string) => `/me/device/${id}/report` },
   { icon: Bell,     label: "Notifications & alerts",  href: "#" },
   { icon: Database, label: "Sensor data & history",   href: "#" },
-  { icon: FlaskConical, label: "Calibration & reports", href: (id: string) => `/me/device/${id}/report` },
   { icon: Wrench,   label: "Sensor settings",          href: "#" },
   { icon: Shield,   label: "Data privacy",             href: "#" },
   { icon: Settings, label: "Advanced settings",        href: "#" },
 ];
 
+const ONLINE_WINDOW_MS  = 60_000;   // last reading < 60s → live
+const IDLE_WINDOW_MS    = 600_000;  // last reading 1–10 min → idle
+
+type LinkStatus = "waiting" | "live" | "idle" | "offline";
+
+function statusLabel(s: LinkStatus): { label: string; color: string; dot: string } {
+  switch (s) {
+    case "live":    return { label: "Live · กำลังส่งข้อมูล", color: "text-mint-500",   dot: "bg-mint-500 animate-pulse" };
+    case "idle":    return { label: "Idle · เพิ่งขาดหาย",    color: "text-amber-400",  dot: "bg-amber-400" };
+    case "offline": return { label: "Offline · ไม่ได้เชื่อมต่อ", color: "text-text-muted", dot: "bg-text-disabled" };
+    case "waiting": return { label: "รอสัญญาณแรกจากอุปกรณ์",  color: "text-text-muted", dot: "bg-text-disabled" };
+  }
+}
+
 export default function DevicePage() {
   const { user } = useAuth();
-  const { connected } = useDeviceStream(user?.id);
+  const { reading: liveReading } = useDeviceStream(user?.id);
 
   const { data: devices } = useQuery({
     queryKey: ["sensor", "devices"],
@@ -37,6 +52,33 @@ export default function DevicePage() {
   });
 
   const device = devices?.[0];
+
+  // Query most-recent readings for THIS device to detect actual activity
+  const { data: recentReadings } = useQuery({
+    queryKey: ["sensor", "readings", device?.id, "last"],
+    queryFn: () => api.sensor.getReadings(device!.id, 1),
+    enabled: !!device,
+    refetchInterval: 15_000,
+  });
+
+  // Compute real "device online" state from newest reading timestamp
+  const lastReading = recentReadings?.[recentReadings.length - 1];
+  const lastReadingTime = liveReading?.device_id === device?.id
+    ? liveReading?.time
+    : lastReading?.time;
+
+  let linkStatus: LinkStatus = "waiting";
+  if (lastReadingTime) {
+    const age = Date.now() - new Date(lastReadingTime).getTime();
+    if      (age < ONLINE_WINDOW_MS) linkStatus = "live";
+    else if (age < IDLE_WINDOW_MS)   linkStatus = "idle";
+    else                              linkStatus = "offline";
+  }
+  const status = statusLabel(linkStatus);
+  const isLive = linkStatus === "live";
+  const lastSeenText = lastReadingTime
+    ? new Date(lastReadingTime).toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short" })
+    : null;
 
   return (
     <div className="max-w-md mx-auto px-4 pt-5 pb-24 space-y-5">
@@ -56,11 +98,14 @@ export default function DevicePage() {
                 {device.sensor_model ?? "MetaBreath TGS1820 v1"}
               </p>
               <div className="flex items-center gap-2 mt-1.5">
-                <div className={`h-2 w-2 rounded-full ${connected ? "bg-mint-500 animate-pulse" : "bg-text-disabled"}`} />
-                <p className="text-sm text-text-muted">
-                  {connected ? "Connected" : "Device disconnected"}
-                </p>
+                <div className={`h-2 w-2 rounded-full ${status.dot}`} />
+                <p className={`text-sm ${status.color}`}>{status.label}</p>
               </div>
+              {lastSeenText && !isLive && (
+                <p className="text-[11px] text-text-muted mt-1">
+                  ล่าสุด: {lastSeenText}
+                </p>
+              )}
 
               {device.needs_recalibration && (
                 <div className="mt-3 bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 flex items-center gap-2">
@@ -72,8 +117,31 @@ export default function DevicePage() {
                 </div>
               )}
 
-              <button className="mt-3 w-full bg-mint-500 text-white rounded-full py-2.5 text-sm font-semibold hover:bg-mint-400 transition-colors">
-                {connected ? "● Connected" : "Connect"}
+              {linkStatus === "waiting" && (
+                <div className="mt-3 bg-blue-500/10 border border-blue-500/30 rounded-xl p-3">
+                  <p className="text-xs text-blue-300 font-semibold">ยังไม่ได้เชื่อมกับ ESP32 จริง</p>
+                  <p className="text-[11px] text-text-muted mt-1 leading-relaxed">
+                    ระบบสร้าง device row แล้ว แต่ยังไม่มีข้อมูลไหลเข้ามา
+                    — ไปดาวน์โหลด firmware แล้ว flash เข้า ESP32 ก่อน
+                  </p>
+                  <Link
+                    href={`/me/device/${device.id}/firmware`}
+                    className="mt-2 inline-block text-xs text-blue-300 font-semibold underline"
+                  >
+                    ดาวน์โหลด firmware →
+                  </Link>
+                </div>
+              )}
+
+              <button
+                disabled={!isLive}
+                className={`mt-3 w-full rounded-full py-2.5 text-sm font-semibold transition-colors ${
+                  isLive
+                    ? "bg-mint-500 text-white hover:bg-mint-400"
+                    : "bg-bg-raised text-text-muted cursor-not-allowed"
+                }`}
+              >
+                {isLive ? "● Live" : linkStatus === "waiting" ? "รอสัญญาณ..." : "Offline"}
               </button>
             </>
           ) : (

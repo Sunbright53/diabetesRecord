@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from app.db.session import get_db
+from app.core.config import settings
 from app.core.deps import get_current_user
 from app.core.security import decode_refresh_token, create_access_token, create_refresh_token
 from app.schemas.auth import RegisterRequest, LoginRequest, RefreshRequest, TokenResponse, UserOut, ProfileOut
@@ -39,10 +40,14 @@ async def me(current_user: User = Depends(get_current_user), db: AsyncSession = 
         goal_type=profile.goal_type,
         onboarded_at=profile.onboarded_at,
     ) if profile else None
+    is_admin = bool(
+        settings.ADMIN_EMAIL and user.email.lower() == settings.ADMIN_EMAIL.lower()
+    )
     return UserOut(
         id=user.id,
         username=user.username,
         email=user.email,
         created_at=user.created_at,
         profile=profile_out,
+        is_admin=is_admin,
     )

@@ -57,3 +57,4 @@ class UserOut(BaseModel):
     email: str
     created_at: datetime
     profile: Optional[ProfileOut] = None
+    is_admin: bool = False
