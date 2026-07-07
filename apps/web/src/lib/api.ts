@@ -108,11 +108,29 @@ export interface KetonePair {
   urine_category: string;
   urine_rank: number;
   urine_mmol: number;
+  breath_mmol_est: number;
 }
 
 export interface AgreementMatrixRow {
   breath_label: string;
   counts: Record<string, number>;
+}
+
+export interface BlandAltmanPoint {
+  mean: number;
+  diff: number;
+  ts: string;
+}
+
+export interface BlandAltman {
+  n: number;
+  bias: number | null;
+  sd: number | null;
+  loa_lower: number | null;
+  loa_upper: number | null;
+  unit: string;
+  interpretation: string;
+  points: BlandAltmanPoint[];
 }
 
 export interface KetoneAgreementOut {
@@ -121,6 +139,7 @@ export interface KetoneAgreementOut {
   interpretation: string;
   pairs: KetonePair[];
   agreement_matrix: AgreementMatrixRow[];
+  bland_altman: BlandAltman;
 }
 
 export interface WeightLog {

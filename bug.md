@@ -732,4 +732,11 @@ Ro (baseline resistance) ของ TGS1820 ต้องวัดใน "clean ai
 
 **ยังต้องทำก่อน deploy:** รัน `alembic upgrade head` ในคอนเทนเนอร์ api เพื่อสร้างคอลัมน์ใหม่
 
+**เพิ่มเติม 2026-07-07 — Bland-Altman ในแดชบอร์ด admin:**
+- `signal_processing.breath_acetone_to_mmol_estimate()` — แปลง acetone_delta (mV) → mmol/L โดยใช้ตัวคูณ /20 ที่ยึดกับเกณฑ์คลินิกที่ classifier ใช้อยู่ (30mV→1.5, 80mV→4.0 mmol/L) จึง self-consistent ไม่ใช่ตัวเลขมั่ว
+- `GET /admin/ketone-agreement` เพิ่ม object `bland_altman` (bias, SD, limits of agreement ±1.96SD, จุดพล็อต)
+- **bias = offset ที่ใช้ปรับเทียบเครื่อง** (ต่อยอดเข้าเฟส 5 ได้ตรงๆ)
+- `AdminAgreementPanel.tsx` วาดกราฟ Bland-Altman เป็น SVG (เส้น bias + LoA แบบ dashed)
+- ตอนนี้ admin มีทั้ง **Spearman** (ความสัมพันธ์) และ **Bland-Altman** (ความตรง) คู่กัน ตามที่กรรมการ biomedical คาดหวัง
+
 **ตรวจความเข้ากันได้ firmware ↔ ระบบ (ผ่าน):** payload keys (`sensor_voltage`, `baseline_voltage`, `acetone_delta_mv`, `pressure_kpa`, `temperature`, `humidity`), topic `metabreath/{device_id}/reading`, และเกณฑ์ classify 5/30/80 mV ตรงกันทั้งสองฝั่ง — เวอร์ชัน serial-only ที่ใช้ทดสอบ bench เป็นโค้ดวัดชุดเดียวกับ `metabreath.ino` เป๊ะ ต่างแค่ไม่มี network layer

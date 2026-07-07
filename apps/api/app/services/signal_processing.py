@@ -52,6 +52,24 @@ def urine_mg_dl_to_category(mg_dl: float) -> str:
     return best["category"]
 
 
+# Provisional breath-acetone → blood-ketone-equivalent conversion.
+# Anchored to the SAME clinical band midpoints the classifier already uses:
+#   firmware/classify thresholds  30 mV → "low/moderate" boundary (~1.5 mmol/L),
+#                                  80 mV → "moderate/high" boundary (~4.0 mmol/L).
+#   Both anchors satisfy mmol ≈ mV / 20, so this factor is self-consistent with
+#   the rest of the pipeline rather than an invented number.
+# This is UNCALIBRATED per device — the Bland-Altman bias against urine is exactly
+# the offset that per-device calibration (Phase 5) should correct.
+_BREATH_MV_PER_MMOL = 20.0
+
+
+def breath_acetone_to_mmol_estimate(acetone_delta_mv: Optional[float]) -> Optional[float]:
+    """Rough blood-ketone-equivalent (mmol/L) from breath acetone delta (mV)."""
+    if acetone_delta_mv is None:
+        return None
+    return max(0.0, acetone_delta_mv / _BREATH_MV_PER_MMOL)
+
+
 def baseline_subtract(raw_voc: float, baseline_voc: float, gain: float = 1.0, offset: float = 0.0) -> float:
     """Apply calibration baseline correction: corrected = (raw − baseline) * gain + offset."""
     return (raw_voc - baseline_voc) * gain + offset

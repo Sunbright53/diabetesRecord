@@ -292,11 +292,29 @@ class KetonePair(BaseModel):
     urine_category: str
     urine_rank: int
     urine_mmol: float
+    breath_mmol_est: float  # breath acetone converted to mmol/L equivalent
 
 
 class AgreementMatrixRow(BaseModel):
     breath_label: str
     counts: dict  # {urine_category: count}
+
+
+class BlandAltmanPoint(BaseModel):
+    mean: float   # (breath_est + urine) / 2
+    diff: float   # breath_est − urine
+    ts: datetime
+
+
+class BlandAltman(BaseModel):
+    n: int
+    bias: Optional[float]         # mean difference (breath − urine), = calibration offset
+    sd: Optional[float]          # SD of differences
+    loa_lower: Optional[float]   # bias − 1.96·SD
+    loa_upper: Optional[float]   # bias + 1.96·SD
+    unit: str
+    interpretation: str
+    points: List[BlandAltmanPoint]
 
 
 class KetoneAgreementOut(BaseModel):
@@ -305,6 +323,7 @@ class KetoneAgreementOut(BaseModel):
     interpretation: str
     pairs: List[KetonePair]
     agreement_matrix: List[AgreementMatrixRow]
+    bland_altman: BlandAltman
 
 
 def _rankdata(values: list[float]) -> list[float]:
@@ -381,6 +400,7 @@ async def ketone_agreement(
             urine_category=lg.urine_category,
             urine_rank=rank,
             urine_mmol=lg.value_mmol,
+            breath_mmol_est=round(sp.breath_acetone_to_mmol_estimate(reading.acetone_delta) or 0.0, 3),
         ))
 
     n = len(pairs)
@@ -415,7 +435,45 @@ async def ketone_agreement(
         if sum(counts.values()) > 0:
             matrix.append(AgreementMatrixRow(breath_label=bl, counts=counts))
 
+    # ── Bland-Altman: agreement on a common mmol/L scale ──
+    # Both methods placed on estimated blood-ketone mmol/L. The mean difference
+    # (bias) is exactly the systematic offset per-device calibration should remove.
+    ba_points = [
+        BlandAltmanPoint(
+            mean=round((p.breath_mmol_est + p.urine_mmol) / 2.0, 3),
+            diff=round(p.breath_mmol_est - p.urine_mmol, 3),
+            ts=p.ts,
+        )
+        for p in pairs
+    ]
+    diffs = [pt.diff for pt in ba_points]
+    if len(diffs) >= 3:
+        bias = sum(diffs) / len(diffs)
+        sd = math.sqrt(sum((d - bias) ** 2 for d in diffs) / (len(diffs) - 1))
+        loa_lower, loa_upper = bias - 1.96 * sd, bias + 1.96 * sd
+        direction = "สูงกว่า" if bias > 0 else "ต่ำกว่า"
+        ba_interp = (
+            f"Bias = {bias:+.2f} mmol/L (ลมหายใจอ่าน{direction}แถบปัสสาวะโดยเฉลี่ย) · "
+            f"Limits of Agreement {loa_lower:.2f} ถึง {loa_upper:.2f} mmol/L · "
+            f"ค่า bias นี้คือ offset ที่ควรใช้ปรับเทียบเครื่อง (calibration)"
+        )
+    else:
+        bias = sd = loa_lower = loa_upper = None
+        ba_interp = f"ข้อมูลยังไม่พอสำหรับ Bland-Altman (มี {len(diffs)} คู่ ต้องการ ≥3)"
+
+    bland_altman = BlandAltman(
+        n=len(ba_points),
+        bias=(round(bias, 3) if bias is not None else None),
+        sd=(round(sd, 3) if sd is not None else None),
+        loa_lower=(round(loa_lower, 3) if loa_lower is not None else None),
+        loa_upper=(round(loa_upper, 3) if loa_upper is not None else None),
+        unit="mmol/L",
+        interpretation=ba_interp,
+        points=ba_points,
+    )
+
     return KetoneAgreementOut(
         n=n, spearman_r=(round(r, 4) if r is not None else None),
         interpretation=interp, pairs=pairs, agreement_matrix=matrix,
+        bland_altman=bland_altman,
     )

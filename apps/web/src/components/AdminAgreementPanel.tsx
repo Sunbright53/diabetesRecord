@@ -1,7 +1,59 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { api, type KetoneAgreementOut } from "@/lib/api";
+import { api, type KetoneAgreementOut, type BlandAltman } from "@/lib/api";
+
+// Bland-Altman scatter: X = mean of the two methods, Y = their difference.
+// Solid line = bias (systematic offset), dashed = ±1.96 SD limits of agreement.
+function BlandAltmanChart({ ba }: { ba: BlandAltman }) {
+  if (ba.n < 3 || ba.bias === null || ba.loa_lower === null || ba.loa_upper === null) {
+    return <div className="text-xs text-gray-400 py-4 text-center">{ba.interpretation}</div>;
+  }
+  const W = 320, H = 180, PL = 40, PR = 12, PT = 12, PB = 26;
+  const xs = ba.points.map((p) => p.mean);
+  const ys = ba.points.map((p) => p.diff).concat([ba.loa_lower, ba.loa_upper, 0]);
+  const xMin = Math.min(...xs, 0), xMax = Math.max(...xs, 0.1);
+  const yMin = Math.min(...ys), yMax = Math.max(...ys);
+  const yPad = (yMax - yMin) * 0.15 || 0.5;
+  const y0 = yMin - yPad, y1 = yMax + yPad;
+  const sx = (v: number) => PL + ((v - xMin) / (xMax - xMin || 1)) * (W - PL - PR);
+  const sy = (v: number) => PT + (1 - (v - y0) / (y1 - y0 || 1)) * (H - PT - PB);
+
+  const line = (yv: number, cls: string, dash?: string) => (
+    <line x1={PL} x2={W - PR} y1={sy(yv)} y2={sy(yv)} className={cls} strokeDasharray={dash} />
+  );
+
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img" aria-label="Bland-Altman plot">
+      {/* axes */}
+      <line x1={PL} x2={PL} y1={PT} y2={H - PB} className="stroke-gray-200" />
+      <line x1={PL} x2={W - PR} y1={H - PB} y2={H - PB} className="stroke-gray-200" />
+      {/* zero, bias, LoA */}
+      {line(0, "stroke-gray-200")}
+      {line(ba.bias, "stroke-emerald-500")}
+      {line(ba.loa_upper, "stroke-amber-400", "4 3")}
+      {line(ba.loa_lower, "stroke-amber-400", "4 3")}
+      {/* labels */}
+      <text x={W - PR} y={sy(ba.bias) - 3} textAnchor="end" className="fill-emerald-600 text-[9px]">
+        bias {ba.bias.toFixed(2)}
+      </text>
+      <text x={W - PR} y={sy(ba.loa_upper) - 3} textAnchor="end" className="fill-amber-500 text-[9px]">
+        +1.96SD {ba.loa_upper.toFixed(2)}
+      </text>
+      <text x={W - PR} y={sy(ba.loa_lower) + 10} textAnchor="end" className="fill-amber-500 text-[9px]">
+        −1.96SD {ba.loa_lower.toFixed(2)}
+      </text>
+      {/* points */}
+      {ba.points.map((p, i) => (
+        <circle key={i} cx={sx(p.mean)} cy={sy(p.diff)} r={3} className="fill-slate-500/70" />
+      ))}
+      {/* axis titles */}
+      <text x={(PL + W - PR) / 2} y={H - 4} textAnchor="middle" className="fill-gray-400 text-[9px]">
+        ค่าเฉลี่ยสองวิธี (mmol/L)
+      </text>
+    </svg>
+  );
+}
 
 const URINE_COLS = ["negative", "trace", "small", "moderate", "large"];
 const BREATH_LABEL_TH: Record<string, string> = {
@@ -62,6 +114,15 @@ export default function AdminAgreementPanel() {
             </div>
           </div>
           <p className="text-xs text-gray-500 leading-relaxed">{data.interpretation}</p>
+
+          {/* Bland-Altman agreement plot */}
+          <div>
+            <div className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">
+              Bland-Altman (ความตรง บนสเกล mmol/L)
+            </div>
+            <BlandAltmanChart ba={data.bland_altman} />
+            <p className="text-[11px] text-gray-500 leading-relaxed mt-1">{data.bland_altman.interpretation}</p>
+          </div>
 
           {/* Agreement matrix */}
           <div>
