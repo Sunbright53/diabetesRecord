@@ -373,6 +373,11 @@ float voltageToPressureKPa(float voltage) {
                    (sensorMaxVoltage - sensorMinVoltage) +
                    PRESSURE_MIN_KPA;
 
+  // Clamp to sensor range: voltage below 10% ratio (e.g. sensor unplugged)
+  // would otherwise produce negative kPa that gets stored in the DB as-is
+  if (pressure < PRESSURE_MIN_KPA) pressure = PRESSURE_MIN_KPA;
+  if (pressure > PRESSURE_MAX_KPA) pressure = PRESSURE_MAX_KPA;
+
   return pressure;
 }
 

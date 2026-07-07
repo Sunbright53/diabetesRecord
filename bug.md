@@ -693,3 +693,21 @@ Ro (baseline resistance) ของ TGS1820 ต้องวัดใน "clean ai
 | DB มี device แต่ไม่มี reading | `SELECT FROM devices` มี 5 rows, `SELECT FROM sensor_readings` = 0 (ไม่ได้ query แต่ implicate) |
 
 **สรุปคำตอบให้ user:** ระบบยังเชื่อมกับฮาร์ดแวร์จริงไม่ได้เลย — แม้ ESP32 firmware compile ผ่านและ container ขึ้นครบ ทั้ง 6 จุดใน Phase A+B ต้องแก้ก่อนถึงจะเห็นข้อมูลแรกไหลจริง (ประมาณ ~1.5 ชั่วโมงแก้ทั้งหมด ไม่รวม hardware sensor conversion)
+
+---
+
+## 📝 Fix Log
+
+### 2026-07-07 — Firmware: clamp ค่าความดันติดลบ (XGZP6847A)
+
+**ไฟล์:** `apps/firmware/metabreath/metabreath.ino` → `voltageToPressureKPa()`
+
+**ปัญหา:** สูตรแปลงแรงดัน→kPa เป็นสมการเส้นตรงจากช่วง 10%–90% ของ 3.3V (0.33V–2.97V) ถ้าแรงดันที่อ่านได้ต่ำกว่า 0.33V (เช่น เซนเซอร์หลุด/สายหลวม) จะได้ **kPa ติดลบ** ซึ่ง `mqtt_subscriber.py` เก็บลง DB ตรงๆ โดยไม่ validate (Pydantic `ge=0` คุมเฉพาะ REST endpoint ไม่คุมเส้นทาง MQTT) — ข้อมูลขยะติดลบจะไหลเข้า `sensor_readings.pressure_mean` และกราฟบนเว็บ
+
+**แก้:** clamp ผลลัพธ์ให้อยู่ในช่วง `[PRESSURE_MIN_KPA, PRESSURE_MAX_KPA]` (0–10 kPa) ก่อน return — มีผลทั้งค่าที่แสดงบน Serial และ payload ที่ publish ขึ้น MQTT
+
+**หมายเหตุ:** การตรวจ "Sensor not connected" ยังทำงานเหมือนเดิม เพราะเช็คจาก `pressureVoltage < 0.05` ไม่ได้เช็คจากค่า kPa
+
+**แก้เพิ่ม (จุดเดียวกัน):** clamp เดียวกันถูกใส่ใน `apps/api/app/templates/metabreath_firmware.ino.tmpl` ด้วย — ไฟล์นี้คือ template ที่ API ใช้ generate ไฟล์ .ino ให้ดาวน์โหลดจากหน้า `/me/device/{id}/firmware` (เป็นคนละไฟล์กับ `apps/firmware/metabreath/metabreath.ino`) ถ้าแก้แค่ไฟล์เดียวผู้ใช้ที่โหลดจากเว็บจะไม่ได้ fix
+
+**ตรวจความเข้ากันได้ firmware ↔ ระบบ (ผ่าน):** payload keys (`sensor_voltage`, `baseline_voltage`, `acetone_delta_mv`, `pressure_kpa`, `temperature`, `humidity`), topic `metabreath/{device_id}/reading`, และเกณฑ์ classify 5/30/80 mV ตรงกันทั้งสองฝั่ง — เวอร์ชัน serial-only ที่ใช้ทดสอบ bench เป็นโค้ดวัดชุดเดียวกับ `metabreath.ino` เป๊ะ ต่างแค่ไม่มี network layer
