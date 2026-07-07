@@ -168,10 +168,11 @@ async def chat(
 
     system_prompt = llm_guardrail.build_system_prompt(user_context, sensor_data)
 
-    api_key = os.getenv("ANTHROPIC_API_KEY")
+    api_key = os.getenv("ANTHROPIC_API_KEY") or os.getenv("CLAUDE_API_KEY")
+    model = os.getenv("CLAUDE_MODEL", "claude-haiku-4-5-20251001")
     if not api_key:
         raw_reply = (
-            "ขอโทษค่ะ — ระบบ AI Coach ยังไม่ได้ตั้งค่า ANTHROPIC_API_KEY "
+            "ขอโทษค่ะ — ระบบ AI Coach ยังไม่ได้ตั้งค่า API key "
             "กรุณาติดต่อผู้ดูแลระบบ"
         )
     else:
@@ -179,7 +180,7 @@ async def chat(
             import anthropic
             client = anthropic.Anthropic(api_key=api_key)
             message = client.messages.create(
-                model="claude-haiku-4-5-20251001",
+                model=model,
                 max_tokens=1024,
                 system=system_prompt,
                 messages=[{"role": "user", "content": body.message}],
