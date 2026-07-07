@@ -1,220 +1,155 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { api } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
+import { useDeviceStream } from "@/lib/useDeviceStream";
 import Link from "next/link";
-import { api, type DeviceOut } from "@/lib/api";
+import {
+  FlaskConical, Zap, Target, Moon, Dumbbell,
+  Bell, Database, Wrench, Settings, Shield, ChevronRight, Plus,
+} from "lucide-react";
 
-interface PairResponse {
-  device_id: string;
-  mqtt_topic: string;
-  mqtt_user: string;
-  mqtt_broker: string;
-  mqtt_port: number;
-  secret: string;
-  message: string;
-}
+const SENSOR_MODES = [
+  { icon: FlaskConical, label: "Calibrate", color: "#00C896", href: (id: string) => `/me/device/${id}/calibrate` },
+  { icon: Zap,         label: "Fast scan",  color: "#F59E0B", href: () => "#" },
+  { icon: Target,      label: "Precision",  color: "#3B82F6", href: () => "#" },
+  { icon: Moon,        label: "Sleep mode", color: "#A855F7", href: () => "#" },
+  { icon: Dumbbell,    label: "Exercise",   color: "#10B981", href: () => "#" },
+];
 
-export default function DeviceSettingsPage() {
-  const [devices, setDevices] = useState<DeviceOut[]>([]);
-  const [pairing, setPairing] = useState(false);
-  const [pairResult, setPairResult] = useState<PairResponse | null>(null);
-  const [error, setError] = useState("");
-  const [copiedField, setCopiedField] = useState("");
+const MENU_ITEMS = [
+  { icon: Bell,     label: "Notifications & alerts",  href: "#" },
+  { icon: Database, label: "Sensor data & history",   href: "#" },
+  { icon: FlaskConical, label: "Calibration & reports", href: (id: string) => `/me/device/${id}/report` },
+  { icon: Wrench,   label: "Sensor settings",          href: "#" },
+  { icon: Shield,   label: "Data privacy",             href: "#" },
+  { icon: Settings, label: "Advanced settings",        href: "#" },
+];
 
-  useEffect(() => {
-    api.sensor.listDevices().then(setDevices).catch(console.error);
-  }, []);
+export default function DevicePage() {
+  const { user } = useAuth();
+  const { connected } = useDeviceStream(user?.id);
 
-  async function pairDevice() {
-    setPairing(true);
-    setError("");
-    setPairResult(null);
-    try {
-      const res = await api.sensor.pairDevice();
-      setPairResult(res);
-      const refreshed = await api.sensor.listDevices();
-      setDevices(refreshed);
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "เกิดข้อผิดพลาด");
-    } finally {
-      setPairing(false);
-    }
-  }
+  const { data: devices } = useQuery({
+    queryKey: ["sensor", "devices"],
+    queryFn: api.sensor.listDevices,
+  });
 
-  function copy(text: string, field: string) {
-    navigator.clipboard.writeText(text);
-    setCopiedField(field);
-    setTimeout(() => setCopiedField(""), 2000);
-  }
+  const device = devices?.[0];
 
   return (
-    <div className="max-w-2xl mx-auto px-4 py-6">
-      <h1 className="text-2xl font-bold text-gray-900 mb-1">MetaBreath Device</h1>
-      <p className="text-gray-500 text-sm mb-6">จับคู่ ESP32 + TGS1820 กับบัญชีของคุณ</p>
+    <div className="max-w-md mx-auto px-4 pt-5 pb-24 space-y-5">
+      {/* Device hero card */}
+      <div className="bg-bg-elevated rounded-3xl overflow-hidden">
+        {/* Device image placeholder */}
+        <div className="h-40 bg-gradient-to-br from-mint-500/10 to-blue-500/10 flex items-center justify-center">
+          <div className="h-20 w-20 rounded-2xl bg-bg-raised flex items-center justify-center">
+            <span className="text-4xl">🫁</span>
+          </div>
+        </div>
 
-      {/* Existing devices */}
-      {devices.length > 0 && (
-        <div className="mb-6">
-          <h2 className="text-sm font-semibold text-gray-600 uppercase tracking-wide mb-3">อุปกรณ์ที่เชื่อมต่อแล้ว</h2>
-          <div className="space-y-3">
-            {devices.map((d) => (
-              <div key={d.id} className="bg-white border border-gray-200 rounded-xl p-4">
-                <div className="flex items-center gap-4">
-                  <div className={`w-3 h-3 rounded-full shrink-0 ${d.active ? "bg-emerald-400" : "bg-gray-300"}`} />
-                  <div className="flex-1">
-                    <div className="font-mono text-sm text-gray-800">{d.id.slice(0, 8)}…</div>
-                    <div className="text-xs text-gray-500 mt-0.5">
-                      {d.sensor_model} · {d.kind}
-                      {d.needs_recalibration && (
-                        <span className="ml-2 text-amber-600 font-medium">⚠ ต้อง calibrate</span>
-                      )}
-                    </div>
-                    {d.last_calibrated_at && (
-                      <div className="text-xs text-gray-400 mt-0.5">
-                        Calibrated: {new Date(d.last_calibrated_at).toLocaleDateString("th-TH")}
-                      </div>
-                    )}
-                  </div>
-                </div>
-                <div className="flex gap-2 mt-3">
-                  <Link
-                    href={`/me/device/${d.id}/calibrate`}
-                    className={`flex-1 text-center text-xs font-semibold py-2 rounded-lg border transition ${
-                      d.needs_recalibration
-                        ? "bg-amber-500 border-amber-500 text-white hover:bg-amber-600"
-                        : "border-gray-200 text-gray-600 hover:bg-gray-50"
-                    }`}
-                  >
-                    Calibrate
-                  </Link>
-                  <Link
-                    href={`/me/device/${d.id}/report`}
-                    className="flex-1 text-center text-xs font-semibold py-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition"
-                  >
-                    Report
-                  </Link>
-                </div>
+        <div className="p-4">
+          {device ? (
+            <>
+              <p className="text-lg font-bold text-text-primary">
+                {device.sensor_model ?? "MetaBreath TGS1820 v1"}
+              </p>
+              <div className="flex items-center gap-2 mt-1.5">
+                <div className={`h-2 w-2 rounded-full ${connected ? "bg-mint-500 animate-pulse" : "bg-text-disabled"}`} />
+                <p className="text-sm text-text-muted">
+                  {connected ? "Connected" : "Device disconnected"}
+                </p>
               </div>
+
+              {device.needs_recalibration && (
+                <div className="mt-3 bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 flex items-center gap-2">
+                  <span className="text-amber-400 text-sm">⚠️</span>
+                  <p className="text-xs text-amber-400">ต้องการ calibrate</p>
+                  <Link href={`/me/device/${device.id}/calibrate`} className="ml-auto text-xs text-amber-400 font-semibold underline">
+                    Calibrate now
+                  </Link>
+                </div>
+              )}
+
+              <button className="mt-3 w-full bg-mint-500 text-white rounded-full py-2.5 text-sm font-semibold hover:bg-mint-400 transition-colors">
+                {connected ? "● Connected" : "Connect"}
+              </button>
+            </>
+          ) : (
+            <>
+              <p className="text-base font-semibold text-text-muted">ยังไม่มีอุปกรณ์</p>
+              <Link href="/me/device/add">
+                <button className="mt-3 w-full bg-mint-500 text-white rounded-full py-2.5 text-sm font-semibold hover:bg-mint-400 transition-colors flex items-center justify-center gap-2">
+                  <Plus size={16} />
+                  Add your first device
+                </button>
+              </Link>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Sensor modes */}
+      {device && (
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-xs text-text-muted font-semibold uppercase tracking-widest">Sensor Modes</p>
+            <button className="text-xs text-mint-500">All ›</button>
+          </div>
+          <div className="flex gap-3 overflow-x-auto pb-1 scrollbar-hide">
+            {SENSOR_MODES.map(({ icon: Icon, label, color, href }) => (
+              <Link
+                key={label}
+                href={href(device.id)}
+                className="flex flex-col items-center gap-2 flex-shrink-0"
+              >
+                <div
+                  className="h-12 w-12 rounded-xl flex items-center justify-center"
+                  style={{ backgroundColor: color + "20" }}
+                >
+                  <Icon size={20} style={{ color }} strokeWidth={1.6} />
+                </div>
+                <span className="text-xs text-text-muted text-center leading-tight w-14">{label}</span>
+              </Link>
             ))}
           </div>
         </div>
       )}
 
-      {/* BLE Pairing — recommended */}
-      <Link
-        href="/me/device/pair"
-        className="flex items-center gap-4 bg-slate-900 text-white rounded-xl p-5 hover:bg-slate-800 transition mb-4"
-      >
-        <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center shrink-0">
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
-              d="M8.288 15.038a5.25 5.25 0 017.424 0M5.106 11.856c3.807-3.808 9.98-3.808 13.788 0M1.924 8.674c5.565-5.565 14.587-5.565 20.152 0M12.53 18.22l-.53.53-.53-.53a.75.75 0 011.06 0z" />
-          </svg>
-        </div>
-        <div className="flex-1">
-          <div className="font-semibold text-sm">เพิ่มอุปกรณ์ด้วย Bluetooth</div>
-          <div className="text-xs text-white/60 mt-0.5">เชื่อมต่ออัตโนมัติ ไม่ต้องกรอกรหัสอุปกรณ์</div>
-        </div>
-        <svg className="w-4 h-4 text-white/40" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-        </svg>
-      </Link>
-
-      {/* Pair new device */}
-      <div className="bg-white border border-gray-200 rounded-xl p-6">
-        <h2 className="font-semibold text-gray-800 mb-1">จับคู่อุปกรณ์ใหม่</h2>
-        <p className="text-sm text-gray-500 mb-4">
-          กด &quot;จับคู่&quot; เพื่อรับ MQTT credentials สำหรับตั้งค่า ESP32 firmware
-        </p>
-
-        {error && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4 text-red-600 text-sm">{error}</div>
-        )}
-
-        <button
-          onClick={pairDevice}
-          disabled={pairing}
-          className="w-full bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-white font-semibold py-2.5 rounded-lg transition"
-        >
-          {pairing ? "กำลังจับคู่..." : "จับคู่ MetaBreath Device"}
-        </button>
-
-        {pairResult && (
-          <div className="mt-5 space-y-3">
-            <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-emerald-700 text-sm">
-              {pairResult.message}
-            </div>
-
-            <h3 className="text-sm font-semibold text-gray-700 mt-4">
-              ตั้งค่า ESP32 firmware ด้วยค่าต่อไปนี้:
-            </h3>
-
-            {[
-              { label: "Device ID", value: pairResult.device_id, field: "device_id" },
-              { label: "MQTT Topic", value: pairResult.mqtt_topic, field: "topic" },
-              { label: "MQTT Broker", value: pairResult.mqtt_broker, field: "broker" },
-              { label: "MQTT Port", value: String(pairResult.mqtt_port), field: "port" },
-              { label: "MQTT User", value: pairResult.mqtt_user, field: "user" },
-              { label: "Secret Key", value: pairResult.secret, field: "secret" },
-            ].map(({ label, value, field }) => (
-              <div key={field} className="bg-gray-50 rounded-lg px-4 py-3 flex items-center justify-between gap-3">
-                <div>
-                  <div className="text-xs text-gray-500 mb-0.5">{label}</div>
-                  <code className="text-sm font-mono text-gray-900 break-all">{value}</code>
+      {/* Menu */}
+      {device && (
+        <div className="bg-bg-elevated rounded-2xl overflow-hidden">
+          <p className="text-xs text-text-muted font-semibold uppercase tracking-widest px-4 pt-4 pb-2">Menu</p>
+          {MENU_ITEMS.map(({ icon: Icon, label, href }, idx) => {
+            const resolvedHref = typeof href === "function" ? href(device.id) : href;
+            return (
+              <Link
+                key={label}
+                href={resolvedHref}
+                className={`flex items-center gap-3 px-4 py-3.5 hover:bg-bg-raised transition-colors ${idx < MENU_ITEMS.length - 1 ? "border-b border-border-soft" : ""}`}
+              >
+                <div className="h-8 w-8 rounded-lg bg-bg-raised flex items-center justify-center">
+                  <Icon size={15} className="text-text-muted" strokeWidth={1.6} />
                 </div>
-                <button
-                  onClick={() => copy(value, field)}
-                  className="shrink-0 text-xs text-gray-500 hover:text-emerald-600 border border-gray-200 hover:border-emerald-300 rounded px-2 py-1 transition"
-                >
-                  {copiedField === field ? "Copied!" : "Copy"}
-                </button>
-              </div>
-            ))}
+                <span className="flex-1 text-sm text-text-primary">{label}</span>
+                <ChevronRight size={14} className="text-text-disabled" />
+              </Link>
+            );
+          })}
+        </div>
+      )}
 
-            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-700">
-              <strong>หมายเหตุ:</strong> บันทึก Secret Key ไว้ก่อน จะแสดงครั้งเดียว
-            </div>
-
-            <details className="mt-3">
-              <summary className="text-sm text-gray-600 cursor-pointer hover:text-gray-900">
-                ESP32 Arduino firmware template
-              </summary>
-              <pre className="mt-2 bg-gray-900 text-gray-100 rounded-lg p-4 text-xs overflow-x-auto whitespace-pre-wrap">
-{`#include <WiFi.h>
-#include <PubSubClient.h>
-#include <ArduinoJson.h>
-
-const char* ssid = "YOUR_WIFI";
-const char* password = "YOUR_WIFI_PASS";
-const char* mqtt_broker = "${pairResult.mqtt_broker}";
-const int   mqtt_port   = ${pairResult.mqtt_port};
-const char* mqtt_user   = "${pairResult.mqtt_user}";
-const char* mqtt_pass   = "YOUR_ESP32_MQTT_PASSWORD";
-const char* topic       = "${pairResult.mqtt_topic}";
-
-// TGS1820 on GPIO34 (ADC)
-// SHT35  on I2C SDA=21 SCL=22
-// Pressure sensor on GPIO35 (ADC)
-
-void publishReading() {
-  StaticJsonDocument<256> doc;
-  doc["ambient_voc"]    = readAmbientVOC();   // ppm
-  doc["breath_voc"]     = readBreathVOC();    // ppm
-  doc["pressure_mean"]  = readPressure();     // hPa
-  doc["pressure_std"]   = pressureStd();
-  doc["breath_duration"]= breathDuration();   // seconds
-  doc["temperature"]    = readTemp();         // °C
-  doc["humidity"]       = readHumidity();     // %RH
-
-  char buf[256];
-  serializeJson(doc, buf);
-  client.publish(topic, buf);
-}`}
-              </pre>
-            </details>
+      {/* Add another device */}
+      {device && (
+        <Link href="/me/device/add" className="flex items-center gap-3 bg-bg-elevated rounded-2xl p-4 hover:bg-bg-raised transition-colors">
+          <div className="h-8 w-8 rounded-lg bg-mint-500/20 flex items-center justify-center">
+            <Plus size={16} className="text-mint-500" />
           </div>
-        )}
-      </div>
+          <span className="text-sm text-text-primary">Add another device</span>
+          <ChevronRight size={14} className="text-text-disabled ml-auto" />
+        </Link>
+      )}
     </div>
   );
 }

@@ -87,10 +87,13 @@ export const en: Dict = {
   },
   nav: {
     home: "Home",
+    health: "Health",
+    breathing: "Breathing",
+    device: "Device",
+    profile: "Profile",
     log: "Log",
     learn: "Learn",
     trends: "Trends",
-    profile: "Profile",
     me: "Me",
   },
   greeting: {

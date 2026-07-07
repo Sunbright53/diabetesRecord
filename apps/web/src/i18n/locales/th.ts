@@ -85,10 +85,13 @@ export const th = {
   },
   nav: {
     home: "หน้าแรก",
+    health: "สุขภาพ",
+    breathing: "หายใจ",
+    device: "อุปกรณ์",
+    profile: "โปรไฟล์",
     log: "บันทึก",
     learn: "เรียนรู้",
     trends: "แนวโน้ม",
-    profile: "โปรไฟล์",
     me: "ฉัน",
   },
   greeting: {

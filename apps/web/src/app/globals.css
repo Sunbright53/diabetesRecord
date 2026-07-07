@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 @theme {
-  /* ─── Brand Colors ─────────────────────────────────── */
+  /* ─── Brand: Mint ─────────────────────────────────── */
   --color-mint-50:  #E6FDF8;
   --color-mint-100: #C0F7EC;
   --color-mint-200: #87EFDA;
@@ -13,6 +13,7 @@
   --color-mint-800: #004D39;
   --color-mint-900: #00261C;
 
+  /* ─── Brand: Peach ────────────────────────────────── */
   --color-peach-50:  #FFF3EE;
   --color-peach-100: #FFE2D5;
   --color-peach-200: #FFC5AB;
@@ -24,19 +25,7 @@
   --color-peach-800: #80230C;
   --color-peach-900: #4D1100;
 
-  --color-surface:   #FAFAF7;
-  --color-surface-2: #F4F4F1;
-  --color-border:    #E7E5DF;
-  --color-border-soft: #EEEDE8;
-  --color-muted:     #6B6B65;
-  --color-muted-bg:  #F2F2EE;
-
-  /* Charcoal — warmer than pure gray-900 */
-  --color-charcoal-500: #2A2926;
-  --color-charcoal-600: #1F1E1B;
-  --color-charcoal-700: #17161400;
-
-  /* Accent — subtle gold/bronze for XP, badges, achievements */
+  /* ─── Gold / XP ───────────────────────────────────── */
   --color-gold-50:  #FBF7EE;
   --color-gold-100: #F3E9C9;
   --color-gold-300: #D9BC7B;
@@ -46,6 +35,72 @@
   /* ─── Typography ───────────────────────────────────── */
   --font-sans: var(--font-inter), var(--font-sarabun), ui-sans-serif, system-ui, sans-serif;
   --font-display: var(--font-playfair), Georgia, "Times New Roman", serif;
+
+  /* ─── Motion ───────────────────────────────────────── */
+  --motion-fast:   150ms;
+  --motion-base:   250ms;
+  --motion-slow:   400ms;
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-emphasized: cubic-bezier(0.2, 0, 0, 1);
+
+  /* ─── Semantic (dark default) ─────────────────────── */
+  --color-bg-primary:  #0A0A0A;
+  --color-bg-surface:  #141414;
+  --color-bg-elevated: #1F1F1F;
+  --color-bg-raised:   #2A2A2A;
+  --color-bg-overlay:  #00000099;
+
+  --color-text-primary:   #FAFAFA;
+  --color-text-secondary: #B8B8B8;
+  --color-text-muted:     #7A7A7A;
+  --color-text-disabled:  #4A4A4A;
+
+  --color-border-soft:   #262626;
+  --color-border-strong: #383838;
+
+  --color-cat-breath:  #00C896;
+  --color-cat-heart:   #FF3B4A;
+  --color-cat-sleep:   #A855F7;
+  --color-cat-oxygen:  #3B82F6;
+  --color-cat-stress:  #F59E0B;
+  --color-cat-workout: #10B981;
+
+  --color-success: #10B981;
+  --color-warning: #F59E0B;
+  --color-danger:  #EF4444;
+  --color-info:    #3B82F6;
+
+  /* Legacy aliases (keep for old components) */
+  --color-surface:   #141414;
+  --color-surface-2: #1F1F1F;
+  --color-border:    #262626;
+  --color-muted:     #7A7A7A;
+  --color-muted-bg:  #1F1F1F;
+  --color-charcoal-500: #FAFAFA;
+  --color-charcoal-600: #B8B8B8;
+}
+
+/* ─── Light mode override ───────────────────────────── */
+[data-theme="light"] {
+  --color-bg-primary:  #FAFAF7;
+  --color-bg-surface:  #FFFFFF;
+  --color-bg-elevated: #F4F4F1;
+  --color-bg-raised:   #EEEDE8;
+  --color-text-primary:   #0A0A0A;
+  --color-text-secondary: #4A4A4A;
+  --color-text-muted:     #6B6B65;
+  --color-text-disabled:  #B8B8B8;
+  --color-border-soft:    #EEEDE8;
+  --color-border-strong:  #DADADA;
+
+  /* Legacy aliases */
+  --color-surface:   #FFFFFF;
+  --color-surface-2: #F4F4F1;
+  --color-border:    #EEEDE8;
+  --color-muted:     #6B6B65;
+  --color-muted-bg:  #F4F4F1;
+  --color-charcoal-500: #0A0A0A;
+  --color-charcoal-600: #4A4A4A;
 }
 
 /* ─── Base ──────────────────────────────────────────── */
@@ -54,14 +109,14 @@
 html { height: 100%; }
 
 body {
-  background-color: var(--color-surface);
-  color: var(--color-charcoal-500);
+  background-color: var(--color-bg-primary);
+  color: var(--color-text-primary);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   min-height: 100%;
 }
 
-/* Numeric stat display — light serif for premium hierarchy */
+/* Numeric stat display */
 .stat-display {
   font-family: var(--font-display);
   font-weight: 400;
@@ -72,4 +127,13 @@ body {
 /* ─── Scrollbar ─────────────────────────────────────── */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #D4D4D2; border-radius: 3px; }
+::-webkit-scrollbar-thumb { background: var(--color-border-strong); border-radius: 3px; }
+
+/* ─── Reduced motion ────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
