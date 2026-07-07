@@ -8,6 +8,8 @@ import Link from "next/link";
 import { Wind, ChevronRight, Settings, BarChart2, FlaskConical } from "lucide-react";
 import { toast } from "sonner";
 import { useT } from "@/lib/i18n";
+import { useQueryClient } from "@tanstack/react-query";
+import UrineKetoneLogger from "@/components/UrineKetoneLogger";
 
 const LABEL_TH: Record<string, string> = {
   clean: "อากาศสะอาด",
@@ -28,6 +30,7 @@ const LABEL_COLOR: Record<string, string> = {
 export default function BreathingPage() {
   const { user } = useAuth();
   const { t } = useT();
+  const queryClient = useQueryClient();
   const { reading: liveReading } = useDeviceStream(user?.id);
 
   // "Connected" = actually receiving data (last reading < 60s), not just WS open
@@ -114,6 +117,11 @@ export default function BreathingPage() {
           </Link>
         </div>
       )}
+
+      {/* Urine ketone reference (ground truth for breath↔urine agreement) */}
+      <UrineKetoneLogger
+        onLogged={() => queryClient.invalidateQueries({ queryKey: ["logs", "ketone"] })}
+      />
 
       {/* Recent sessions */}
       <div>

@@ -137,6 +137,18 @@ class KetoneLog(SQLModel, table=True):
     device_id: Optional[UUID] = Field(default=None, foreign_key="devices.id")
     note: Optional[str] = Field(default=None, max_length=500)
 
+    # Ground-truth reference type — blood (mmol/L) or urine strip (ordinal band)
+    ketone_type: str = Field(default="blood", max_length=10)  # blood|urine
+    # Urine strip reading: semi-quantitative colour band (negative|trace|small|moderate|large).
+    # value_mmol stores the approximate mmol/L midpoint for the band so downstream
+    # correlation code can treat blood + urine uniformly; urine_category keeps the raw band.
+    urine_category: Optional[str] = Field(default=None, max_length=12)
+    urine_mg_dl: Optional[float] = None  # exact strip value if the user entered a number
+
+    # Pairing to a breath measurement (for breath↔ground-truth agreement analysis)
+    paired_reading_time: Optional[datetime] = None
+    paired_device_id: Optional[UUID] = Field(default=None, foreign_key="devices.id")
+
 class WeightLog(SQLModel, table=True):
     __tablename__ = "weight_logs"
 

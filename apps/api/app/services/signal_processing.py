@@ -17,6 +17,41 @@ _HUMIDITY_REF = 65.0   # %RH reference humidity
 _PRESSURE_REF = 1013.25  # hPa reference pressure
 
 
+# ── Urine ketone strip reference scale ──────────────────────────────────────
+# Standard nitroprusside strips (e.g. Ketostix) read acetoacetate as a colour
+# band. This is a FIXED clinical reference — not an average of any dataset.
+# `rank` is the ordinal position (use for Spearman correlation);
+# `mg_dl` / `mmol` are the conventional midpoint values per band.
+# Note: urine measures acetoacetate; breath measures acetone. They correlate
+# but with a time lag, so agreement is expected to be strong-but-imperfect.
+URINE_KETONE_SCALE = [
+    {"category": "negative", "rank": 0, "mg_dl": 0.0,  "mmol": 0.0},
+    {"category": "trace",    "rank": 1, "mg_dl": 5.0,  "mmol": 0.5},
+    {"category": "small",    "rank": 2, "mg_dl": 15.0, "mmol": 1.5},
+    {"category": "moderate", "rank": 3, "mg_dl": 40.0, "mmol": 4.0},
+    {"category": "large",    "rank": 4, "mg_dl": 80.0, "mmol": 8.0},
+]
+_URINE_BY_CATEGORY = {b["category"]: b for b in URINE_KETONE_SCALE}
+
+
+def urine_category_to_mmol(category: str) -> Optional[float]:
+    """Approximate blood-equivalent mmol/L midpoint for a urine strip band."""
+    band = _URINE_BY_CATEGORY.get((category or "").strip().lower())
+    return band["mmol"] if band else None
+
+
+def urine_category_rank(category: str) -> Optional[int]:
+    """Ordinal rank (0–4) of a urine strip band, for rank correlation."""
+    band = _URINE_BY_CATEGORY.get((category or "").strip().lower())
+    return band["rank"] if band else None
+
+
+def urine_mg_dl_to_category(mg_dl: float) -> str:
+    """Snap an exact mg/dL strip value to the nearest standard band."""
+    best = min(URINE_KETONE_SCALE, key=lambda b: abs(b["mg_dl"] - mg_dl))
+    return best["category"]
+
+
 def baseline_subtract(raw_voc: float, baseline_voc: float, gain: float = 1.0, offset: float = 0.0) -> float:
     """Apply calibration baseline correction: corrected = (raw − baseline) * gain + offset."""
     return (raw_voc - baseline_voc) * gain + offset

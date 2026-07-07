@@ -9,12 +9,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime
 from typing import List, Optional
 from uuid import UUID, uuid4
+import math
 import secrets as _secrets
 
 from app.core.config import settings
 from app.core.deps import get_admin_user, get_db
 from app.models.user import User, Profile
-from app.models.health import Device, SensorReading, DeviceCalibration
+from app.models.health import Device, SensorReading, DeviceCalibration, KetoneLog
 from app.services import signal_processing as sp
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -280,3 +281,141 @@ async def submit_reading(
     await db.commit()
     await db.refresh(reading)
     return reading
+
+
+# ─── Breath ↔ urine ketone agreement ──────────────────────────────────────────
+
+class KetonePair(BaseModel):
+    ts: datetime
+    acetone_delta: float
+    breath_label: Optional[str]
+    urine_category: str
+    urine_rank: int
+    urine_mmol: float
+
+
+class AgreementMatrixRow(BaseModel):
+    breath_label: str
+    counts: dict  # {urine_category: count}
+
+
+class KetoneAgreementOut(BaseModel):
+    n: int
+    spearman_r: Optional[float]
+    interpretation: str
+    pairs: List[KetonePair]
+    agreement_matrix: List[AgreementMatrixRow]
+
+
+def _rankdata(values: list[float]) -> list[float]:
+    """Average-rank of each value (ties share the mean rank), 1-based."""
+    order = sorted(range(len(values)), key=lambda i: values[i])
+    ranks = [0.0] * len(values)
+    i = 0
+    while i < len(order):
+        j = i
+        while j + 1 < len(order) and values[order[j + 1]] == values[order[i]]:
+            j += 1
+        avg = (i + j) / 2.0 + 1.0  # 1-based average rank
+        for k in range(i, j + 1):
+            ranks[order[k]] = avg
+        i = j + 1
+    return ranks
+
+
+def _spearman(xs: list[float], ys: list[float]) -> Optional[float]:
+    """Spearman rank correlation — correct choice for ordinal urine bands."""
+    n = len(xs)
+    if n < 3:
+        return None
+    rx, ry = _rankdata(xs), _rankdata(ys)
+    mx = sum(rx) / n
+    my = sum(ry) / n
+    num = sum((a - mx) * (b - my) for a, b in zip(rx, ry))
+    den = math.sqrt(sum((a - mx) ** 2 for a in rx) * sum((b - my) ** 2 for b in ry))
+    if den == 0:
+        return None
+    return num / den
+
+
+@router.get("/ketone-agreement", response_model=KetoneAgreementOut)
+async def ketone_agreement(
+    _admin: User = Depends(get_admin_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Compare breath acetone (device) against paired urine-strip ketone (ground truth).
+
+    Urine bands are ordinal, so agreement uses Spearman rank correlation — NOT
+    Pearson. Breath measures acetone, urine measures acetoacetate, so strong-but-
+    imperfect agreement is the expected, honest result.
+    """
+    logs_result = await db.exec(
+        select(KetoneLog).where(
+            KetoneLog.ketone_type == "urine",
+            KetoneLog.urine_category.isnot(None),
+            KetoneLog.paired_reading_time.isnot(None),
+            KetoneLog.paired_device_id.isnot(None),
+        ).order_by(KetoneLog.ts)
+    )
+    logs = logs_result.all()
+
+    pairs: list[KetonePair] = []
+    for lg in logs:
+        reading_result = await db.exec(
+            select(SensorReading).where(
+                SensorReading.device_id == lg.paired_device_id,
+                SensorReading.time == lg.paired_reading_time,
+            )
+        )
+        reading = reading_result.first()
+        if not reading or reading.acetone_delta is None:
+            continue
+        rank = sp.urine_category_rank(lg.urine_category)
+        if rank is None:
+            continue
+        pairs.append(KetonePair(
+            ts=lg.ts,
+            acetone_delta=reading.acetone_delta,
+            breath_label=reading.label,
+            urine_category=lg.urine_category,
+            urine_rank=rank,
+            urine_mmol=lg.value_mmol,
+        ))
+
+    n = len(pairs)
+    r = _spearman([p.acetone_delta for p in pairs], [float(p.urine_rank) for p in pairs])
+
+    if n < 3:
+        interp = f"ข้อมูลยังไม่พอ (มี {n} คู่ ต้องการอย่างน้อย 3 คู่ที่จับคู่ลมหายใจกับแถบปัสสาวะ)"
+    elif r is None:
+        interp = "คำนวณสหสัมพันธ์ไม่ได้ (ค่าคงที่เกินไป)"
+    else:
+        strength = (
+            "แข็งแรงมาก" if r >= 0.8 else
+            "แข็งแรง" if r >= 0.6 else
+            "ปานกลาง" if r >= 0.4 else
+            "อ่อน" if r >= 0.2 else
+            "แทบไม่มี"
+        )
+        interp = (
+            f"Spearman r = {r:.2f} ({strength}) จาก {n} คู่ — "
+            "ลมหายใจวัด acetone ส่วนปัสสาวะวัด acetoacetate จึงคาดว่าสอดคล้องแต่ไม่สมบูรณ์"
+        )
+
+    # Confusion-style matrix: breath label (rows) × urine band (cols)
+    breath_labels = ["clean", "low", "moderate", "high", "unreliable"]
+    urine_cats = [b["category"] for b in sp.URINE_KETONE_SCALE]
+    matrix: list[AgreementMatrixRow] = []
+    for bl in breath_labels:
+        counts = {c: 0 for c in urine_cats}
+        for p in pairs:
+            if (p.breath_label or "unreliable") == bl:
+                counts[p.urine_category] += 1
+        if sum(counts.values()) > 0:
+            matrix.append(AgreementMatrixRow(breath_label=bl, counts=counts))
+
+    return KetoneAgreementOut(
+        n=n, spearman_r=(round(r, 4) if r is not None else None),
+        interpretation=interp, pairs=pairs, agreement_matrix=matrix,
+    )

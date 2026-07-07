@@ -8,6 +8,7 @@ import {
   AdminReadingOut,
   AdminReadingSummary,
 } from "@/lib/api";
+import AdminAgreementPanel from "@/components/AdminAgreementPanel";
 
 // ─── Label styling ────────────────────────────────────────────────────────────
 
@@ -514,6 +515,11 @@ export default function AdminPage() {
             ))}
           </div>
         )}
+
+        {/* Breath ↔ urine ketone agreement */}
+        <div className="mb-6">
+          <AdminAgreementPanel />
+        </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {/* Left — user list */}

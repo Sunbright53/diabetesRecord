@@ -92,6 +92,35 @@ export interface KetoneLog {
   value_mmol: number;
   source: string;
   note: string | null;
+  ketone_type: string;
+  urine_category: string | null;
+  urine_mg_dl: number | null;
+  paired_reading_time: string | null;
+  paired_device_id: string | null;
+}
+
+export type UrineCategory = "negative" | "trace" | "small" | "moderate" | "large";
+
+export interface KetonePair {
+  ts: string;
+  acetone_delta: number;
+  breath_label: string | null;
+  urine_category: string;
+  urine_rank: number;
+  urine_mmol: number;
+}
+
+export interface AgreementMatrixRow {
+  breath_label: string;
+  counts: Record<string, number>;
+}
+
+export interface KetoneAgreementOut {
+  n: number;
+  spearman_r: number | null;
+  interpretation: string;
+  pairs: KetonePair[];
+  agreement_matrix: AgreementMatrixRow[];
 }
 
 export interface WeightLog {
@@ -364,7 +393,16 @@ export const api = {
       request<KetoneLog[]>(
         `/logs/ketone${params?.days ? `?days=${params.days}` : ""}`
       ),
-    postKetone: (data: { value_mmol: number; source?: string; note?: string }) =>
+    postKetone: (data: {
+      value_mmol?: number;
+      source?: string;
+      note?: string;
+      ketone_type?: "blood" | "urine";
+      urine_category?: UrineCategory;
+      urine_mg_dl?: number;
+      paired_reading_time?: string;
+      paired_device_id?: string;
+    }) =>
       request<KetoneLog>("/logs/ketone", {
         method: "POST",
         body: JSON.stringify(data),
@@ -489,5 +527,7 @@ export const api = {
         method: "POST",
         body: JSON.stringify(data),
       }),
+    ketoneAgreement: () =>
+      request<KetoneAgreementOut>("/admin/ketone-agreement"),
   },
 };

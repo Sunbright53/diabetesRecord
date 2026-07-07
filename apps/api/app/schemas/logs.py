@@ -4,9 +4,18 @@ from uuid import UUID
 from typing import Optional
 
 class KetoneLogCreate(BaseModel):
-    value_mmol: float
+    # For blood: supply value_mmol. For urine: supply urine_category (or urine_mg_dl);
+    # value_mmol is derived from the band automatically when omitted.
+    value_mmol: Optional[float] = None
     source: str = "manual"
     note: Optional[str] = None
+
+    ketone_type: str = "blood"            # blood | urine
+    urine_category: Optional[str] = None  # negative|trace|small|moderate|large
+    urine_mg_dl: Optional[float] = None
+    # Link this ground-truth reading to a breath measurement for agreement analysis
+    paired_reading_time: Optional[datetime] = None
+    paired_device_id: Optional[UUID] = None
 
 class KetoneLogOut(BaseModel):
     id: UUID
@@ -14,6 +23,11 @@ class KetoneLogOut(BaseModel):
     value_mmol: float
     source: str
     note: Optional[str]
+    ketone_type: str
+    urine_category: Optional[str]
+    urine_mg_dl: Optional[float]
+    paired_reading_time: Optional[datetime]
+    paired_device_id: Optional[UUID]
 
 class WeightLogCreate(BaseModel):
     kg: float

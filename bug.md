@@ -710,4 +710,26 @@ Ro (baseline resistance) ของ TGS1820 ต้องวัดใน "clean ai
 
 **แก้เพิ่ม (จุดเดียวกัน):** clamp เดียวกันถูกใส่ใน `apps/api/app/templates/metabreath_firmware.ino.tmpl` ด้วย — ไฟล์นี้คือ template ที่ API ใช้ generate ไฟล์ .ino ให้ดาวน์โหลดจากหน้า `/me/device/{id}/firmware` (เป็นคนละไฟล์กับ `apps/firmware/metabreath/metabreath.ino`) ถ้าแก้แค่ไฟล์เดียวผู้ใช้ที่โหลดจากเว็บจะไม่ได้ fix
 
+---
+
+### 2026-07-07 — Feature: เทียบลมหายใจกับคีโตนปัสสาวะ (ground truth)
+
+**เป้าหมาย:** เก็บค่าคีโตนจากแถบตรวจปัสสาวะเป็น "ค่าอ้างอิงจริง" จับคู่กับการเป่าลมหายใจ แล้วโชว์ความสอดคล้องในหน้า admin (เฟส 1 + 4 ของแผน breath↔urine)
+
+**หลักการที่ฝังไว้:** ปัสสาวะวัด acetoacetate ส่วนลมหายใจวัด acetone → สอดคล้องแต่มี lag ใช้ **Spearman rank** (เพราะแถบปัสสาวะเป็น ordinal) ไม่ใช่ Pearson. ตารางอ้างอิงแถบสี→mg/dL→mmol เป็นค่าคงที่ทางคลินิก **ไม่ใช่การเฉลี่ยข้อมูลสองชุด** (เลี่ยงกับดัก feedback loop ที่คุยกัน)
+
+**ไฟล์ที่แก้/เพิ่ม:**
+- `apps/api/app/models/health.py` — เพิ่มฟิลด์ใน `KetoneLog`: ketone_type, urine_category, urine_mg_dl, paired_reading_time, paired_device_id
+- `apps/api/alembic/versions/d4e2f6a8b1c9_ketone_urine_pairing.py` — migration ใหม่ (down_revision = c8a9e0f1b2d3)
+- `apps/api/app/services/signal_processing.py` — `URINE_KETONE_SCALE` + helper แปลงแถบ↔mmol/rank/mg_dl
+- `apps/api/app/schemas/logs.py`, `apps/api/app/routers/logs.py` — รับค่า urine + auto-pair กับ reading ล่าสุดใน 15 นาที
+- `apps/api/app/routers/admin.py` — endpoint `GET /admin/ketone-agreement` (Spearman + ตาราง agreement + คู่ล่าสุด)
+- `apps/web/src/lib/api.ts` — types + client methods
+- `apps/web/src/components/UrineKetoneLogger.tsx` — UI บันทึกแถบสี/mg-dL (ให้คนใช้เลือก) วางในหน้า breathing
+- `apps/web/src/components/AdminAgreementPanel.tsx` — แผงเทียบในหน้า admin
+
+**ยังไม่ทำ (เฟส 5):** ปรับ threshold ต่อเครื่องจากข้อมูลจริง (calibration auto) — รอสะสมคู่ข้อมูลให้พอก่อน
+
+**ยังต้องทำก่อน deploy:** รัน `alembic upgrade head` ในคอนเทนเนอร์ api เพื่อสร้างคอลัมน์ใหม่
+
 **ตรวจความเข้ากันได้ firmware ↔ ระบบ (ผ่าน):** payload keys (`sensor_voltage`, `baseline_voltage`, `acetone_delta_mv`, `pressure_kpa`, `temperature`, `humidity`), topic `metabreath/{device_id}/reading`, และเกณฑ์ classify 5/30/80 mV ตรงกันทั้งสองฝั่ง — เวอร์ชัน serial-only ที่ใช้ทดสอบ bench เป็นโค้ดวัดชุดเดียวกับ `metabreath.ino` เป๊ะ ต่างแค่ไม่มี network layer
