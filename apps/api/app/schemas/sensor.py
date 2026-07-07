@@ -61,11 +61,11 @@ class SensorReadingOut(BaseModel):
 
 
 class CalibrationCreate(BaseModel):
-    baseline_voc: float
-    baseline_temp: Optional[float] = None
-    baseline_humidity: Optional[float] = None
-    baseline_pressure: Optional[float] = None
-    method: Optional[str] = "zero"   # zero|span|drift_check
+    baseline_voc: float = Field(..., ge=0.0, le=200.0, description="Ambient VOC baseline in ppm (0–200)")
+    baseline_temp: Optional[float] = Field(None, ge=-40.0, le=85.0)
+    baseline_humidity: Optional[float] = Field(None, ge=0.0, le=100.0)
+    baseline_pressure: Optional[float] = Field(None, ge=800.0, le=1100.0)
+    method: Optional[str] = "zero"
     reference_device: Optional[str] = None
     notes: Optional[str] = None
 

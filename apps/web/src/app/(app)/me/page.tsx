@@ -7,25 +7,15 @@ import { useT } from "@/lib/i18n";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
-  Settings, Palette, Globe, Link2, Lock, MessageSquare, Info, LogOut, ChevronRight,
+  Palette, Globe, LogOut, ChevronRight,
   Flame, Trophy, Star,
 } from "lucide-react";
 
 const XP_PER_LEVEL = 100;
 
-const MENU_ITEMS = [
-  { icon: Settings,      label: "App settings",              href: "#" },
-  { icon: Palette,       label: "Theme & appearance",        href: "/me/settings/appearance", highlight: true },
-  { icon: Globe,         label: "Language",                  href: "#" },
-  { icon: Link2,         label: "Third-party data",          href: "#" },
-  { icon: Lock,          label: "Permissions",               href: "#" },
-  { icon: MessageSquare, label: "Feedback",                  href: "#" },
-  { icon: Info,          label: "About",                     href: "#" },
-];
-
 export default function MePage() {
   const { user, logout } = useAuth();
-  const { t } = useT();
+  const { t, locale, setLocale } = useT();
   const router = useRouter();
 
   const { data: xp }     = useQuery({ queryKey: ["me", "xp"],     queryFn: api.gamification.getXP });
@@ -50,9 +40,6 @@ export default function MePage() {
             <p className="text-sm text-text-muted">@{user?.username}</p>
             <p className="text-xs text-mint-500 mt-0.5">{t(`goal.${goalKey}` as never) || goalKey}</p>
           </div>
-          <Link href="/me/settings" className="h-9 w-9 rounded-xl bg-bg-raised flex items-center justify-center">
-            <Settings size={16} className="text-text-muted" />
-          </Link>
         </div>
 
         {/* XP bar */}
@@ -95,7 +82,7 @@ export default function MePage() {
       </div>
 
       {/* Competition coming soon */}
-      <div className="bg-bg-elevated rounded-2xl p-4 flex items-center gap-3">
+      <div className="bg-bg-elevated rounded-2xl p-4 flex items-center gap-3 opacity-50">
         <div className="h-9 w-9 rounded-xl bg-gold-500/20 flex items-center justify-center">
           <Trophy size={16} className="text-gold-500" />
         </div>
@@ -103,7 +90,6 @@ export default function MePage() {
           <p className="text-sm font-semibold text-text-primary">Competition</p>
           <p className="text-xs text-text-muted">Coming soon</p>
         </div>
-        <ChevronRight size={14} className="text-text-disabled" />
       </div>
 
       {/* Badges preview */}
@@ -123,18 +109,47 @@ export default function MePage() {
 
       {/* Menu */}
       <div className="bg-bg-elevated rounded-2xl overflow-hidden">
-        {MENU_ITEMS.map(({ icon: Icon, label, href, highlight }, idx) => (
-          <Link
+        {/* Theme & appearance — functional */}
+        <Link href="/me/settings/appearance" className="flex items-center gap-3 px-4 py-3.5 border-b border-border-soft hover:bg-bg-raised transition-colors">
+          <div className="h-8 w-8 rounded-lg bg-mint-500/20 flex items-center justify-center">
+            <Palette size={15} className="text-mint-500" />
+          </div>
+          <span className="flex-1 text-sm text-mint-500 font-medium">Theme & appearance</span>
+          <ChevronRight size={14} className="text-text-disabled" />
+        </Link>
+
+        {/* Language — functional toggle */}
+        <button
+          onClick={() => setLocale(locale === "th" ? "en" : "th")}
+          className="w-full flex items-center gap-3 px-4 py-3.5 border-b border-border-soft hover:bg-bg-raised transition-colors"
+        >
+          <div className="h-8 w-8 rounded-lg bg-bg-raised flex items-center justify-center">
+            <Globe size={15} className="text-text-muted" />
+          </div>
+          <span className="flex-1 text-sm text-text-primary text-left">Language</span>
+          <span className="text-xs text-text-muted font-mono bg-bg-raised px-2 py-0.5 rounded-full">
+            {locale === "th" ? "ไทย → EN" : "EN → ไทย"}
+          </span>
+        </button>
+
+        {/* Coming soon items */}
+        {[
+          { label: "App settings" },
+          { label: "Third-party data" },
+          { label: "Permissions" },
+          { label: "Feedback" },
+          { label: "About" },
+        ].map(({ label }, idx, arr) => (
+          <div
             key={label}
-            href={href}
-            className={`flex items-center gap-3 px-4 py-3.5 hover:bg-bg-raised transition-colors ${idx < MENU_ITEMS.length - 1 ? "border-b border-border-soft" : ""}`}
+            className={`flex items-center gap-3 px-4 py-3.5 opacity-50 ${idx < arr.length - 1 ? "border-b border-border-soft" : ""}`}
           >
-            <div className={`h-8 w-8 rounded-lg flex items-center justify-center ${highlight ? "bg-mint-500/20" : "bg-bg-raised"}`}>
-              <Icon size={15} className={highlight ? "text-mint-500" : "text-text-muted"} strokeWidth={1.6} />
+            <div className="h-8 w-8 rounded-lg bg-bg-raised flex items-center justify-center">
+              <span className="text-xs text-text-muted">•</span>
             </div>
-            <span className={`flex-1 text-sm ${highlight ? "text-mint-500 font-medium" : "text-text-primary"}`}>{label}</span>
-            <ChevronRight size={14} className="text-text-disabled" />
-          </Link>
+            <span className="flex-1 text-sm text-text-primary">{label}</span>
+            <span className="text-[10px] text-text-disabled bg-bg-raised px-2 py-0.5 rounded-full">Soon</span>
+          </div>
         ))}
       </div>
 

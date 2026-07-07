@@ -6,6 +6,8 @@ import { useAuth } from "@/lib/auth";
 import { useDeviceStream } from "@/lib/useDeviceStream";
 import Link from "next/link";
 import { Wind, ChevronRight, Settings, BarChart2, FlaskConical } from "lucide-react";
+import { toast } from "sonner";
+import { useT } from "@/lib/i18n";
 
 const LABEL_TH: Record<string, string> = {
   low: "ต่ำ",
@@ -23,6 +25,7 @@ const LABEL_COLOR: Record<string, string> = {
 
 export default function BreathingPage() {
   const { user } = useAuth();
+  const { t } = useT();
   const { reading: liveReading, connected } = useDeviceStream(user?.id);
 
   const { data: devices } = useQuery({
@@ -59,19 +62,33 @@ export default function BreathingPage() {
           </div>
         ) : (
           <div className="flex items-center justify-between">
-            <p className="text-sm text-text-muted">ไม่มีอุปกรณ์ที่จับคู่</p>
-            <Link href="/me/device/add" className="text-xs text-mint-500 font-medium">+ Add device</Link>
+            <p className="text-sm text-text-muted">{t("breathing.noDevice")}</p>
+            <Link href="/me/device/add" className="text-xs text-mint-500 font-medium">{t("breathing.addDevice")}</Link>
           </div>
         )}
       </div>
 
       {/* Start session CTA */}
       <div className="flex flex-col items-center py-8">
-        <button className="h-28 w-28 rounded-full bg-mint-500/10 border-2 border-mint-500/40 flex flex-col items-center justify-center gap-2 hover:bg-mint-500/20 active:scale-95 transition-all duration-200">
-          <Wind size={32} className="text-mint-500" strokeWidth={1.6} />
-          <span className="text-xs font-semibold text-mint-500 uppercase tracking-wide">START</span>
+        <button
+          onClick={() => {
+            if (!connected) {
+              toast.error(t("breathing.toastDisconnected"), {
+                description: t("breathing.toastDisconnectedDesc"),
+                action: { label: t("breathing.goToDevice"), onClick: () => window.location.href = "/me/device" },
+              });
+              return;
+            }
+            toast.info(t("breathing.toastStarted"));
+          }}
+          className="h-28 w-28 rounded-full bg-mint-500/10 border-2 border-mint-500/40 flex flex-col items-center justify-center gap-2 hover:bg-mint-500/20 active:scale-95 transition-all duration-200"
+        >
+          <Wind size={32} className={connected ? "text-mint-500" : "text-text-muted"} strokeWidth={1.6} />
+          <span className={`text-xs font-semibold uppercase tracking-wide ${connected ? "text-mint-500" : "text-text-muted"}`}>{t("breathing.startSession")}</span>
         </button>
-        <p className="text-xs text-text-muted mt-4">กดเพื่อเริ่มการตรวจ</p>
+        <p className="text-xs text-text-muted mt-4">
+          {connected ? t("breathing.tapToStart") : t("breathing.connectFirst")}
+        </p>
       </div>
 
       {/* Quick actions */}
@@ -79,15 +96,15 @@ export default function BreathingPage() {
         <div className="grid grid-cols-3 gap-3">
           <Link href={`/me/device/${primaryDevice.id}/calibrate`} className="bg-bg-elevated rounded-xl p-3 flex flex-col items-center gap-1.5 hover:bg-bg-raised transition-colors">
             <FlaskConical size={18} className="text-mint-500" strokeWidth={1.6} />
-            <span className="text-xs text-text-muted">Calibrate</span>
+            <span className="text-xs text-text-muted">{t("breathing.calibrate")}</span>
           </Link>
           <Link href={`/me/device/${primaryDevice.id}/report`} className="bg-bg-elevated rounded-xl p-3 flex flex-col items-center gap-1.5 hover:bg-bg-raised transition-colors">
             <BarChart2 size={18} className="text-blue-400" strokeWidth={1.6} />
-            <span className="text-xs text-text-muted">Report</span>
+            <span className="text-xs text-text-muted">{t("breathing.report")}</span>
           </Link>
           <Link href="/trends" className="bg-bg-elevated rounded-xl p-3 flex flex-col items-center gap-1.5 hover:bg-bg-raised transition-colors">
             <ChevronRight size={18} className="text-text-muted" strokeWidth={1.6} />
-            <span className="text-xs text-text-muted">Trend</span>
+            <span className="text-xs text-text-muted">{t("breathing.trend")}</span>
           </Link>
         </div>
       )}
@@ -95,13 +112,13 @@ export default function BreathingPage() {
       {/* Recent sessions */}
       <div>
         <div className="flex items-center justify-between mb-3">
-          <p className="text-xs text-text-muted font-semibold uppercase tracking-widest">Recent Sessions</p>
+          <p className="text-xs text-text-muted font-semibold uppercase tracking-widest">{t("breathing.recentSessions")}</p>
         </div>
 
         {recentReadings.length === 0 ? (
           <div className="bg-bg-elevated rounded-2xl p-6 text-center">
-            <p className="text-sm text-text-muted">ยังไม่มีประวัติการตรวจ</p>
-            <p className="text-xs text-text-disabled mt-1">กดปุ่มเพื่อเริ่มการตรวจครั้งแรก</p>
+            <p className="text-sm text-text-muted">{t("breathing.noHistory")}</p>
+            <p className="text-xs text-text-disabled mt-1">{t("breathing.noHistorySub")}</p>
           </div>
         ) : (
           <div className="space-y-2">

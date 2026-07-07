@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { api, type CalibrationReportOut } from "@/lib/api";
 import { AlertTriangle, CheckCircle, FileText, Wind, ArrowLeft } from "lucide-react";
+import { useT } from "@/lib/i18n";
 
 function Metric({ label, value, unit, status }: {
   label: string; value: string | number; unit?: string; status?: "ok" | "warn" | "bad";
@@ -28,6 +29,7 @@ function Metric({ label, value, unit, status }: {
 export default function CalibrationReportPage() {
   const params = useParams();
   const router = useRouter();
+  const { locale } = useT();
   const deviceId = params.id as string;
 
   const { data: report, isLoading, error } = useQuery<CalibrationReportOut>({
@@ -88,7 +90,7 @@ export default function CalibrationReportPage() {
             {report.needs_recalibration ? "ต้อง Calibrate ใหม่" : "Sensor ปกติ"}
           </p>
           <p className="text-xs text-text-muted">
-            {new Date(report.report_generated_at).toLocaleString("th-TH")}
+            {new Date(report.report_generated_at).toLocaleString(locale === "th" ? "th-TH-u-ca-gregory" : "en-US", { dateStyle: "medium", timeStyle: "short" })}
           </p>
         </div>
         {report.needs_recalibration && (

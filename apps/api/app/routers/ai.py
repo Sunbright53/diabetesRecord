@@ -171,10 +171,7 @@ async def chat(
     api_key = os.getenv("ANTHROPIC_API_KEY") or os.getenv("CLAUDE_API_KEY")
     model = os.getenv("CLAUDE_MODEL", "claude-haiku-4-5-20251001")
     if not api_key:
-        raw_reply = (
-            "ขอโทษค่ะ — ระบบ AI Coach ยังไม่ได้ตั้งค่า API key "
-            "กรุณาติดต่อผู้ดูแลระบบ"
-        )
+        raw_reply = "ขอโทษค่ะ — AI Coach ยังไม่พร้อมใช้งานในขณะนี้ กรุณาลองใหม่ภายหลัง"
     else:
         try:
             import anthropic
@@ -186,8 +183,8 @@ async def chat(
                 messages=[{"role": "user", "content": body.message}],
             )
             raw_reply = message.content[0].text
-        except Exception as exc:
-            raw_reply = f"เกิดข้อผิดพลาดในการเชื่อมต่อ AI: {str(exc)[:120]}"
+        except Exception:
+            raw_reply = "ขอโทษค่ะ — เกิดข้อผิดพลาดชั่วคราว กรุณาลองใหม่ภายหลัง"
 
     safe_reply = llm_guardrail.sanitise_response(raw_reply, lang="th")
 

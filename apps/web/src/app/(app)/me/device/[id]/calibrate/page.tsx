@@ -138,7 +138,8 @@ export default function CalibratePage() {
 
           <div>
             <label className="text-xs font-semibold text-text-muted mb-1.5 block">Ambient VOC (ppm) *</label>
-            <input type="number" step="0.01" min="0" max="100" value={ambientVoc} onChange={(e) => setAmbientVoc(e.target.value)} placeholder="เช่น 0.45" className={inputCls} />
+            <input type="number" step="0.01" min="0" max="200" value={ambientVoc} onChange={(e) => setAmbientVoc(e.target.value)} placeholder="เช่น 0.45" className={inputCls} />
+            <p className="text-xs text-text-disabled mt-1">ช่วงปกติ: 0.1–5 ppm ในอากาศสะอาด</p>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -157,7 +158,13 @@ export default function CalibratePage() {
             <input type="text" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="เช่น สภาพอากาศปกติ" className={inputCls} />
           </div>
 
-          <button onClick={() => { if (!ambientVoc || isNaN(parseFloat(ambientVoc))) { setError("กรุณากรอกค่า Ambient VOC"); return; } setError(""); setStep("confirm"); }} className="w-full bg-mint-500 text-white font-semibold py-3 rounded-full text-sm hover:bg-mint-400 transition-colors">
+          <button onClick={() => {
+            const v = parseFloat(ambientVoc);
+            if (!ambientVoc || isNaN(v)) { setError("กรุณากรอกค่า Ambient VOC"); return; }
+            if (v < 0) { setError("ค่า Ambient VOC ต้องไม่ติดลบ (เซนเซอร์วัดค่า ≥ 0 ppm)"); return; }
+            if (v > 200) { setError("ค่า Ambient VOC สูงเกินไป (ค่าปกติ 0–100 ppm)"); return; }
+            setError(""); setStep("confirm");
+          }} className="w-full bg-mint-500 text-white font-semibold py-3 rounded-full text-sm hover:bg-mint-400 transition-colors">
             ถัดไป
           </button>
           {error && <p className="text-danger text-sm text-center">{error}</p>}

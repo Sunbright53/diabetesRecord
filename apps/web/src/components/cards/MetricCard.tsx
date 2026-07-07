@@ -8,7 +8,10 @@ interface MetricCardProps {
 }
 
 export function MetricCard({ icon, label, value, goal, unit, color = "#00C896" }: MetricCardProps) {
-  const pct = goal ? Math.min(1, Number(value) / Number(goal)) : null;
+  const numVal = typeof value === "number" ? value : NaN;
+  const pct = (goal && isFinite(numVal) && numVal >= 0)
+    ? Math.min(1, numVal / Number(goal))
+    : null;
 
   return (
     <div className="bg-bg-elevated rounded-2xl p-4 flex flex-col gap-2">

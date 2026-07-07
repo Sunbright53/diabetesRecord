@@ -36,7 +36,7 @@ export default function HomePage() {
       <div className="flex items-center justify-between">
         <div>
           <p className="text-xs text-text-muted">{dateStr}</p>
-          <h1 className="text-xl font-semibold text-text-primary mt-0.5">สวัสดี, {name}</h1>
+          <h1 className="text-xl font-semibold text-text-primary mt-0.5">{t("health.greeting")}, {name}</h1>
         </div>
         {xp && (
           <div className="text-right">
@@ -48,14 +48,14 @@ export default function HomePage() {
 
       {/* Acetone hero ring */}
       <div className="bg-bg-elevated rounded-3xl p-6 flex flex-col items-center gap-4">
-        <p className="text-xs text-text-muted font-semibold uppercase tracking-widest">Breath Acetone · Live</p>
+        <p className="text-xs text-text-muted font-semibold uppercase tracking-widest">{t("health.liveBreath")}</p>
         <AcetoneRing value={liveValue} label={liveLabel} size={200} />
         <div className="flex items-center gap-2">
           <div className={`h-2 w-2 rounded-full ${liveConnected ? "bg-mint-500 animate-pulse" : "bg-text-disabled"}`} />
           <span className="text-xs text-text-muted">
             {liveConnected ? "Live · MetaBreath" : (
               <Link href="/me/device" className="underline text-mint-500">
-                จับคู่อุปกรณ์
+                {t("health.connectDevice")}
               </Link>
             )}
           </span>
@@ -84,9 +84,9 @@ export default function HomePage() {
 
       {/* Metrics row */}
       <div className="grid grid-cols-3 gap-3">
-        <MetricCard icon="🔥" label="Calories" value="—" goal={2000} unit="kcal" />
-        <MetricCard icon="👣" label="Steps" value="—" goal={8000} />
-        <MetricCard icon="⏱" label="Move" value="—" unit="min" goal={60} />
+        <MetricCard icon="🔥" label="Calories" value="—" goal={undefined} unit="kcal" />
+        <MetricCard icon="👣" label="Steps"    value="—" goal={undefined} />
+        <MetricCard icon="⏱" label="Move"     value="—" unit="min" goal={undefined} />
       </div>
 
       {/* Category cards */}
@@ -129,9 +129,9 @@ export default function HomePage() {
       {/* Today's readings log */}
       <div>
         <div className="flex items-center justify-between mb-3">
-          <p className="text-xs text-text-muted font-semibold uppercase tracking-widest">วันนี้</p>
+          <p className="text-xs text-text-muted font-semibold uppercase tracking-widest">{t("health.todaySessions")}</p>
           <Link href="/breathing" className="flex items-center gap-0.5 text-xs text-mint-500">
-            ดูทั้งหมด <ChevronRight size={12} />
+            {t("health.viewAll")} <ChevronRight size={12} />
           </Link>
         </div>
         {liveReading ? (
@@ -146,8 +146,8 @@ export default function HomePage() {
           </div>
         ) : (
           <div className="bg-bg-elevated rounded-2xl p-4 text-center">
-            <p className="text-sm text-text-muted">ยังไม่มีการตรวจวันนี้</p>
-            <Link href="/breathing" className="text-xs text-mint-500 mt-1 block">เริ่มตรวจ →</Link>
+            <p className="text-sm text-text-muted">{t("health.noReadingToday")}</p>
+            <Link href="/breathing" className="text-xs text-mint-500 mt-1 block">{t("health.startSession")}</Link>
           </div>
         )}
       </div>

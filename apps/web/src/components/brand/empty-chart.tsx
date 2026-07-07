@@ -1,20 +1,24 @@
 import { twMerge } from "tailwind-merge";
 
-// Custom empty-state illustration for charts (no data yet)
 export function EmptyChartIllustration({ className }: { className?: string }) {
   return (
     <svg
       viewBox="0 0 120 80"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
-      className={twMerge("text-mint-300", className)}
+      className={twMerge("text-border-strong", className)}
     >
-      <path d="M8 62 L36 42 L58 52 L82 28 L112 44" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" strokeDasharray="3 4" />
-      <circle cx="36"  cy="42" r="2.5" fill="currentColor" opacity="0.45" />
-      <circle cx="58"  cy="52" r="2.5" fill="currentColor" opacity="0.45" />
-      <circle cx="82"  cy="28" r="2.5" fill="currentColor" opacity="0.45" />
-      <path d="M8 70 L112 70" stroke="currentColor" strokeWidth="1" strokeLinecap="round" opacity="0.35" />
-      <path d="M20 74 L100 74" stroke="currentColor" strokeWidth="0.8" strokeLinecap="round" opacity="0.2" />
+      {/* Bar chart empty state — clearly bars, not a line chart */}
+      <rect x="12" y="50" width="14" height="20" rx="3" fill="currentColor" opacity="0.2" />
+      <rect x="32" y="38" width="14" height="32" rx="3" fill="currentColor" opacity="0.2" />
+      <rect x="52" y="44" width="14" height="26" rx="3" fill="currentColor" opacity="0.2" />
+      <rect x="72" y="30" width="14" height="40" rx="3" fill="currentColor" opacity="0.2" />
+      <rect x="92" y="42" width="14" height="28" rx="3" fill="currentColor" opacity="0.2" />
+      {/* X-axis */}
+      <line x1="8" y1="70" x2="112" y2="70" stroke="currentColor" strokeWidth="1" opacity="0.3" strokeLinecap="round" />
+      {/* No data icon */}
+      <circle cx="60" cy="26" r="8" stroke="currentColor" strokeWidth="1.5" opacity="0.4" />
+      <line x1="55" y1="22" x2="65" y2="30" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" opacity="0.4" />
     </svg>
   );
 }

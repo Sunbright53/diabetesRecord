@@ -45,7 +45,7 @@ export function FloatingAIButton() {
       <button
         aria-label="AI Coach"
         onClick={() => setOpen(true)}
-        className="fixed bottom-6 right-4 z-50 h-14 w-14 rounded-full bg-mint-500 text-white flex items-center justify-center shadow-lg shadow-mint-500/30 hover:bg-mint-400 transition-colors"
+        className="fixed bottom-20 right-4 z-50 h-14 w-14 rounded-full bg-mint-500 text-white flex items-center justify-center shadow-lg shadow-mint-500/30 hover:bg-mint-400 transition-colors"
       >
         <Bot size={24} strokeWidth={1.6} />
       </button>
