@@ -93,47 +93,51 @@ def compute_features(sequence: list[float]) -> dict:
 
 
 def quality_score(
-    ambient_voc: Optional[float],
-    breath_voc: Optional[float],
-    breath_duration: Optional[float],
-    pressure_mean: Optional[float],
-    pressure_std: Optional[float],
-    temp_c: Optional[float],
-    humidity_pct: Optional[float],
+    sensor_voltage: Optional[float] = None,
+    baseline_voltage: Optional[float] = None,
+    pressure_kpa: Optional[float] = None,
+    temp_c: Optional[float] = None,
+    humidity_pct: Optional[float] = None,
+    # Legacy kwargs kept for backward compat
+    ambient_voc: Optional[float] = None,
+    breath_voc: Optional[float] = None,
+    breath_duration: Optional[float] = None,
+    pressure_mean: Optional[float] = None,
+    pressure_std: Optional[float] = None,
 ) -> float:
     """
-    Compute 0–100 quality score for a single reading.
+    Compute 0–100 quality score for a MetaBreath reading.
+
+    Firmware `metabreath.ino` reports:
+      - sensor_voltage (V, TGS1820 direct read)
+      - baseline_voltage (V, calibrated in clean air at boot)
+      - pressure_kpa (0–10 kPa, XGZP6847A breath differential pressure)
+      - temperature (°C, SHT31)
+      - humidity (%, SHT31)
 
     Deductions:
-    - Missing breath_voc or ambient_voc: -30 each
-    - Breath too short (<1.5 s) or too long (>8 s): -20
-    - High pressure variance (CV > 30%): -15
-    - Extreme temperature (<10°C or >40°C): -10
-    - Extreme humidity (<20% or >95%): -10
+    - Sensor voltage < 0.05 V (disconnected): -60
+    - Missing baseline (never calibrated): -20
+    - Pressure < 0.2 kPa (no meaningful breath): -20
+    - Extreme temperature (<10 °C or >40 °C): -10
+    - Extreme humidity (<20 % or >95 %): -10
     """
     score = 100.0
 
-    if breath_voc is None:
-        score -= 30
-    if ambient_voc is None:
-        score -= 30
+    if sensor_voltage is not None and sensor_voltage < 0.05:
+        score -= 60
 
-    if breath_duration is not None:
-        if breath_duration < 1.5 or breath_duration > 8.0:
-            score -= 20
+    if baseline_voltage is None or baseline_voltage <= 0.0:
+        score -= 20
 
-    if pressure_mean and pressure_std and pressure_mean > 0:
-        cv = pressure_std / pressure_mean
-        if cv > 0.30:
-            score -= 15
+    if pressure_kpa is None or pressure_kpa < 0.2:
+        score -= 20
 
-    if temp_c is not None:
-        if temp_c < 10 or temp_c > 40:
-            score -= 10
+    if temp_c is not None and (temp_c < 10 or temp_c > 40):
+        score -= 10
 
-    if humidity_pct is not None:
-        if humidity_pct < 20 or humidity_pct > 95:
-            score -= 10
+    if humidity_pct is not None and (humidity_pct < 20 or humidity_pct > 95):
+        score -= 10
 
     return max(0.0, min(100.0, score))
 
@@ -177,27 +181,30 @@ def environment_penalty(temp_c: Optional[float], humidity_pct: Optional[float]) 
     return round(penalty, 2)
 
 
-def classify_acetone(acetone_ppm: float, confidence: float = 1.0) -> dict:
+def classify_acetone(acetone_delta_mv: float, confidence: float = 1.0) -> dict:
     """
-    Map calibrated acetone_delta to metabolic label + risk index.
+    Map TGS1820 voltage delta (in millivolts) to metabolic label + risk index.
 
-    Boundaries from MetaBreath demo dataset (NSC 2026):
-    < 30 ppm   → low      (0) — not in ketosis
-    30–74 ppm  → moderate (1) — mild ketosis / fat burning
-    ≥ 75 ppm   → high     (2) — strong ketosis
-    unreliable     → quality/confidence too low
+    Boundaries match ESP32 firmware `classifyAcetone(delta_mV)`:
+      < 5  mV   → clean       (0) — clean air / not exhaling
+      < 30 mV   → low         (1) — no significant acetone
+      < 80 mV   → moderate    (2) — mild ketosis / fat burning
+      ≥ 80 mV   → high        (3) — strong ketosis
+    Confidence < 0.6 or negative delta → "unreliable"
     """
     if confidence < 0.6:
         return {"label": "unreliable", "metabolic_risk_index": None}
 
-    if acetone_ppm is None or acetone_ppm < 0:
+    if acetone_delta_mv is None:
         return {"label": "unreliable", "metabolic_risk_index": None}
-    elif acetone_ppm < 30.0:
-        return {"label": "low", "metabolic_risk_index": 0}
-    elif acetone_ppm < 75.0:
-        return {"label": "moderate", "metabolic_risk_index": 1}
+    elif acetone_delta_mv < 5.0:
+        return {"label": "clean", "metabolic_risk_index": 0}
+    elif acetone_delta_mv < 30.0:
+        return {"label": "low", "metabolic_risk_index": 1}
+    elif acetone_delta_mv < 80.0:
+        return {"label": "moderate", "metabolic_risk_index": 2}
     else:
-        return {"label": "high", "metabolic_risk_index": 2}
+        return {"label": "high", "metabolic_risk_index": 3}
 
 
 def detect_drift(calibration_history: list[dict]) -> dict:

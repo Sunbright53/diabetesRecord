@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { useT } from "@/lib/i18n";
 
 const LABEL_TH: Record<string, string> = {
+  clean: "อากาศสะอาด",
   low: "ต่ำ",
   moderate: "ปานกลาง",
   high: "สูง",
@@ -17,6 +18,7 @@ const LABEL_TH: Record<string, string> = {
 };
 
 const LABEL_COLOR: Record<string, string> = {
+  clean: "text-sky-400",
   low: "text-mint-500",
   moderate: "text-amber-400",
   high: "text-red-400",
@@ -26,7 +28,11 @@ const LABEL_COLOR: Record<string, string> = {
 export default function BreathingPage() {
   const { user } = useAuth();
   const { t } = useT();
-  const { reading: liveReading, connected } = useDeviceStream(user?.id);
+  const { reading: liveReading } = useDeviceStream(user?.id);
+
+  // "Connected" = actually receiving data (last reading < 60s), not just WS open
+  const connected = !!liveReading &&
+    (Date.now() - new Date(liveReading.time).getTime() < 60_000);
 
   const { data: devices } = useQuery({
     queryKey: ["sensor", "devices"],
@@ -134,9 +140,11 @@ export default function BreathingPage() {
                 </div>
                 <div className="flex-1">
                   <p className="text-sm font-semibold text-text-primary">
-                    {r.acetone_delta?.toFixed(1) ?? "—"} ppm
+                    {r.acetone_delta?.toFixed(0) ?? "—"} mV
                   </p>
                   <p className="text-xs text-text-muted mt-0.5">
+                    {r.pressure_mean != null && `${r.pressure_mean.toFixed(2)} kPa`}
+                    {r.pressure_mean != null && r.quality_score != null && " · "}
                     {r.quality_score ? `Q: ${r.quality_score.toFixed(0)}/100` : ""}
                   </p>
                 </div>

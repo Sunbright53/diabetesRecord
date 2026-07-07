@@ -9,6 +9,7 @@ interface Props {
 }
 
 const LABEL_CONFIG: Record<string, { color: string; grad: [string, string] }> = {
+  clean:      { color: "#38BDF8", grad: ["#38BDF8", "#7DD3FC"] },
   low:        { color: "#00C896", grad: ["#00C896", "#22D6B2"] },
   moderate:   { color: "#F59E0B", grad: ["#F59E0B", "#FCD34D"] },
   high:       { color: "#EF4444", grad: ["#EF4444", "#F87171"] },
@@ -16,6 +17,7 @@ const LABEL_CONFIG: Record<string, { color: string; grad: [string, string] }> = 
 };
 
 const LABEL_TH: Record<string, string> = {
+  clean: "อากาศสะอาด",
   low: "ระดับต่ำ",
   moderate: "ปานกลาง",
   high: "ระดับสูง",
@@ -27,7 +29,7 @@ export function AcetoneRing({ value, label, size = 200 }: Props) {
   const r = (size / 2) - 16;
   const circumference = 2 * Math.PI * r;
 
-  // Map 0–150 ppm to 0–1 arc fill
+  // Map 0–150 mV delta to 0–1 arc fill (matches firmware thresholds: 5/30/80 mV)
   const fill = useMemo(() => {
     if (value == null) return 0;
     return Math.min(1, Math.max(0, value / 150));
@@ -71,9 +73,9 @@ export function AcetoneRing({ value, label, size = 200 }: Props) {
       {/* Center text */}
       <div className="absolute inset-0 flex flex-col items-center justify-center">
         <p className="text-4xl font-bold tracking-tight" style={{ color: cfg.color }}>
-          {value != null ? value.toFixed(1) : "—"}
+          {value != null ? value.toFixed(0) : "—"}
         </p>
-        <p className="text-xs text-text-muted mt-0.5">ppm</p>
+        <p className="text-xs text-text-muted mt-0.5">mV</p>
         {label && (
           <p className="text-xs font-semibold mt-2" style={{ color: cfg.color }}>
             {LABEL_TH[label] ?? label}

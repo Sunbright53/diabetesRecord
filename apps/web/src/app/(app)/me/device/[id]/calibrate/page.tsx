@@ -1,10 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
+import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
+import { useDeviceStream } from "@/lib/useDeviceStream";
 import Link from "next/link";
-import { CheckCircle, Info, ArrowLeft } from "lucide-react";
+import { CheckCircle, Info, ArrowLeft, Wifi, WifiOff, RefreshCw } from "lucide-react";
 
 type Step = "intro" | "ambient" | "confirm" | "done";
 
@@ -23,7 +26,7 @@ function StepBar({ current }: { current: Step }) {
         <div key={s.id} className="flex items-center">
           <div className="flex flex-col items-center gap-1">
             <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-all ${
-              i < idx  ? "bg-mint-500 text-white" :
+              i < idx   ? "bg-mint-500 text-white" :
               i === idx ? "bg-mint-500/20 text-mint-500 ring-2 ring-mint-500" :
               "bg-bg-raised text-text-disabled"
             }`}>
@@ -46,6 +49,22 @@ export default function CalibratePage() {
   const router = useRouter();
   const params = useParams();
   const deviceId = params.id as string;
+  const { user } = useAuth();
+
+  // Live stream — ต้องมี reading ล่าสุดจริงๆ (WS แค่เปิด ≠ device online)
+  const { reading: liveReading } = useDeviceStream(user?.id);
+  const connected = !!liveReading &&
+    liveReading.device_id === deviceId &&
+    (Date.now() - new Date(liveReading.time).getTime() < 60_000);
+
+  // ดึง reading ล่าสุดจาก API (มี ambient_voc, temperature, humidity)
+  const { data: latestReadings, refetch, isFetching } = useQuery({
+    queryKey: ["calibrate-live", deviceId],
+    queryFn: () => api.sensor.getReadings(deviceId, 1),
+    refetchInterval: 10_000, // auto-refresh ทุก 10 วิ
+  });
+
+  const latest = latestReadings?.[latestReadings.length - 1];
 
   const [step, setStep] = useState<Step>("intro");
   const [ambientVoc, setAmbientVoc] = useState("");
@@ -55,6 +74,23 @@ export default function CalibratePage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState<{ drift_score: number; needs_recalibration: boolean } | null>(null);
+  const [autoFilled, setAutoFilled] = useState(false);
+
+  // Auto-fill เมื่อมี reading ใหม่และยังไม่ได้กรอก
+  // NOTE: ambient_voc column now stores TGS1820 baseline_voltage (V)
+  useEffect(() => {
+    if (!latest || autoFilled) return;
+    if (latest.ambient_voc != null && !ambientVoc) {
+      setAmbientVoc(latest.ambient_voc.toFixed(4));
+      setAutoFilled(true);
+    }
+    if (latest.temp_c != null && !baselineTemp) {
+      setBaselineTemp(latest.temp_c.toFixed(1));
+    }
+    if (latest.humidity_pct != null && !baselineHumidity) {
+      setBaselineHumidity(latest.humidity_pct.toFixed(0));
+    }
+  }, [latest, ambientVoc, baselineTemp, baselineHumidity, autoFilled]);
 
   async function submit() {
     setLoading(true);
@@ -79,14 +115,41 @@ export default function CalibratePage() {
   return (
     <div className="max-w-sm mx-auto px-4 pt-5 pb-24">
       {/* Header */}
-      <div className="flex items-center gap-3 mb-6">
+      <div className="flex items-center gap-3 mb-4">
         <button onClick={() => router.back()} className="h-9 w-9 rounded-full bg-bg-elevated flex items-center justify-center">
           <ArrowLeft size={18} className="text-text-muted" />
         </button>
-        <div>
+        <div className="flex-1">
           <h1 className="text-lg font-semibold text-text-primary">Calibrate อุปกรณ์</h1>
           <p className="text-xs text-text-muted font-mono">{deviceId.slice(0, 8)}…</p>
         </div>
+      </div>
+
+      {/* Device connection status */}
+      <div className={`flex items-center gap-2.5 px-4 py-2.5 rounded-2xl mb-5 ${
+        connected
+          ? "bg-mint-500/10 border border-mint-500/20"
+          : "bg-bg-elevated border border-border-soft"
+      }`}>
+        {connected
+          ? <Wifi size={15} className="text-mint-500 shrink-0" strokeWidth={1.6} />
+          : <WifiOff size={15} className="text-text-disabled shrink-0" strokeWidth={1.6} />}
+        <div className="flex-1 min-w-0">
+          <p className={`text-xs font-semibold ${connected ? "text-mint-500" : "text-text-muted"}`}>
+            {connected ? "อุปกรณ์เชื่อมต่ออยู่" : "อุปกรณ์ไม่ได้เชื่อมต่อ"}
+          </p>
+          {latest && (
+            <p className="text-[10px] text-text-disabled mt-0.5">
+              Reading ล่าสุด: {new Date(latest.time).toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+            </p>
+          )}
+        </div>
+        <button
+          onClick={() => { setAutoFilled(false); refetch(); }}
+          className="h-7 w-7 rounded-lg bg-bg-raised flex items-center justify-center"
+        >
+          <RefreshCw size={13} className={`text-text-muted ${isFetching ? "animate-spin" : ""}`} />
+        </button>
       </div>
 
       <StepBar current={step} />
@@ -110,8 +173,10 @@ export default function CalibratePage() {
             <p className="font-semibold text-text-primary">ขั้นตอน:</p>
             {[
               "วางอุปกรณ์ในอากาศสะอาด 5 นาที ก่อนเริ่ม",
-              "อ่านค่า VOC ambient จากหน้าจออุปกรณ์",
-              "กรอกค่าที่อ่านได้ในหน้าถัดไป",
+              connected
+                ? "แอปจะดึง baseline voltage จากอุปกรณ์อัตโนมัติ"
+                : "เชื่อมต่ออุปกรณ์ก่อน หรือกรอกค่าเองจากหน้าจออุปกรณ์",
+              "ตรวจสอบค่าและกด ยืนยัน",
             ].map((text, i) => (
               <div key={i} className="flex gap-2">
                 <span className="w-5 h-5 rounded-full bg-mint-500/20 text-mint-500 text-xs flex items-center justify-center shrink-0 mt-0.5 font-bold">{i + 1}</span>
@@ -132,14 +197,60 @@ export default function CalibratePage() {
       {/* Step: Ambient reading */}
       {step === "ambient" && (
         <div className="bg-bg-elevated rounded-2xl p-5 space-y-4">
-          <p className="text-sm text-text-secondary leading-relaxed">
-            กรอกค่าที่อ่านจากอุปกรณ์ขณะวางในอากาศสะอาด (ไม่เป่าลม)
-          </p>
+          {/* Live reading card */}
+          {latest?.ambient_voc != null && (
+            <div className="bg-mint-500/10 border border-mint-500/20 rounded-xl p-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs text-mint-500 font-semibold">Baseline จากอุปกรณ์ (Live)</p>
+                  <p className="text-2xl font-bold text-text-primary mt-0.5">
+                    {latest.ambient_voc.toFixed(4)}
+                    <span className="text-sm font-normal text-text-muted ml-1">V</span>
+                  </p>
+                  <p className="text-[10px] text-text-muted mt-0.5">
+                    Sensor V: {latest.breath_voc?.toFixed(4) ?? "—"} V
+                    {latest.quality_score != null && ` · Q: ${latest.quality_score.toFixed(0)}/100`}
+                  </p>
+                </div>
+                <button
+                  onClick={() => {
+                    if (latest.ambient_voc != null) {
+                      setAmbientVoc(latest.ambient_voc.toFixed(4));
+                      setAutoFilled(true);
+                    }
+                  }}
+                  className="text-xs text-mint-500 font-semibold bg-mint-500/20 px-3 py-1.5 rounded-full hover:bg-mint-500/30 transition-colors"
+                >
+                  ใช้ค่านี้
+                </button>
+              </div>
+            </div>
+          )}
+
+          {!connected && (
+            <div className="bg-warning/10 border border-warning/20 rounded-xl p-3 text-xs text-warning">
+              ⚠️ อุปกรณ์ไม่ได้เชื่อมต่อ — กรอกค่าเองจากหน้าจออุปกรณ์
+            </div>
+          )}
 
           <div>
-            <label className="text-xs font-semibold text-text-muted mb-1.5 block">Ambient VOC (ppm) *</label>
-            <input type="number" step="0.01" min="0" max="200" value={ambientVoc} onChange={(e) => setAmbientVoc(e.target.value)} placeholder="เช่น 0.45" className={inputCls} />
-            <p className="text-xs text-text-disabled mt-1">ช่วงปกติ: 0.1–5 ppm ในอากาศสะอาด</p>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-xs font-semibold text-text-muted">Baseline Voltage (V) *</label>
+              {autoFilled && (
+                <span className="text-[10px] text-mint-500 bg-mint-500/10 px-2 py-0.5 rounded-full">Auto-filled</span>
+              )}
+            </div>
+            <input
+              type="number"
+              step="0.0001"
+              min="0"
+              max="3.3"
+              value={ambientVoc}
+              onChange={(e) => { setAmbientVoc(e.target.value); setAutoFilled(false); }}
+              placeholder="เช่น 0.4500"
+              className={inputCls}
+            />
+            <p className="text-xs text-text-disabled mt-1">ช่วงปกติ: 0.1–1.5 V ในอากาศสะอาด (TGS1820)</p>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -160,9 +271,9 @@ export default function CalibratePage() {
 
           <button onClick={() => {
             const v = parseFloat(ambientVoc);
-            if (!ambientVoc || isNaN(v)) { setError("กรุณากรอกค่า Ambient VOC"); return; }
-            if (v < 0) { setError("ค่า Ambient VOC ต้องไม่ติดลบ (เซนเซอร์วัดค่า ≥ 0 ppm)"); return; }
-            if (v > 200) { setError("ค่า Ambient VOC สูงเกินไป (ค่าปกติ 0–100 ppm)"); return; }
+            if (!ambientVoc || isNaN(v)) { setError("กรุณากรอก Baseline Voltage"); return; }
+            if (v < 0)   { setError("ค่า Baseline ต้องไม่ติดลบ"); return; }
+            if (v > 3.3) { setError("ค่า Baseline สูงเกินไป (ADC สูงสุด 3.3 V)"); return; }
             setError(""); setStep("confirm");
           }} className="w-full bg-mint-500 text-white font-semibold py-3 rounded-full text-sm hover:bg-mint-400 transition-colors">
             ถัดไป
@@ -178,10 +289,11 @@ export default function CalibratePage() {
 
           <div className="space-y-0">
             {[
-              { label: "Ambient VOC",  value: `${ambientVoc} ppm` },
+              { label: "Baseline V",   value: `${ambientVoc} V` },
               { label: "อุณหภูมิ",      value: baselineTemp     ? `${baselineTemp} °C`  : "—" },
               { label: "ความชื้น",       value: baselineHumidity ? `${baselineHumidity} %` : "—" },
               { label: "หมายเหตุ",       value: notes || "—" },
+              { label: "Auto-filled",   value: autoFilled ? "✓ จากอุปกรณ์" : "กรอกเอง" },
             ].map(({ label, value }) => (
               <div key={label} className="flex justify-between items-center py-2.5 border-b border-border-soft last:border-0">
                 <span className="text-sm text-text-muted">{label}</span>

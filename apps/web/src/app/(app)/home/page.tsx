@@ -15,7 +15,11 @@ export default function HomePage() {
   const { user } = useAuth();
   const { t, locale } = useT();
   const name = user?.profile?.display_name ?? user?.username ?? "—";
-  const { reading: liveReading, connected: liveConnected } = useDeviceStream(user?.id);
+  const { reading: liveReading } = useDeviceStream(user?.id);
+
+  // "Live" only if we received a reading within the last 60 seconds
+  const liveConnected = !!liveReading &&
+    (Date.now() - new Date(liveReading.time).getTime() < 60_000);
 
   const { data: streak } = useQuery({ queryKey: ["me", "streak"], queryFn: api.gamification.getStreak });
   const { data: xp }    = useQuery({ queryKey: ["me", "xp"],     queryFn: api.gamification.getXP });
@@ -24,7 +28,7 @@ export default function HomePage() {
   const dateLocale = locale === "th" ? "th-TH" : "en-US";
   const dateStr = new Date().toLocaleDateString(dateLocale, { weekday: "short", day: "numeric", month: "short" });
 
-  const liveValue = liveReading?.acetone_delta ?? null;
+  const liveValue = liveReading?.acetone_delta_mv ?? null;
   const liveLabel = liveReading?.label ?? null;
 
   const questDone = quests?.filter((q) => q.completed_at).length ?? 0;
@@ -96,7 +100,7 @@ export default function HomePage() {
           <CategoryCard
             icon="🌬"
             title="Breathing"
-            value={liveValue != null ? `${liveValue.toFixed(1)} ppm` : "—"}
+            value={liveValue != null ? `${liveValue.toFixed(0)} mV` : "—"}
             sub={liveLabel ?? "ไม่มีข้อมูล"}
             href="/breathing"
             iconBg="#00C896"
@@ -140,8 +144,11 @@ export default function HomePage() {
               <p className="text-xs text-text-muted">{new Date(liveReading.time).toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" })}</p>
             </div>
             <div className="flex-1">
-              <p className="text-sm font-semibold text-text-primary">{liveReading.acetone_delta.toFixed(1)} ppm</p>
-              <p className="text-xs text-text-muted mt-0.5">Quality: {liveReading.quality_score?.toFixed(0)}/100</p>
+              <p className="text-sm font-semibold text-text-primary">{liveReading.acetone_delta_mv.toFixed(0)} mV</p>
+              <p className="text-xs text-text-muted mt-0.5">
+                {liveReading.pressure_kpa != null && `${liveReading.pressure_kpa.toFixed(2)} kPa · `}
+                Q: {liveReading.quality_score?.toFixed(0)}/100
+              </p>
             </div>
           </div>
         ) : (

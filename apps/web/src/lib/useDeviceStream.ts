@@ -2,11 +2,19 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 
+export type AcetoneLabel = "clean" | "low" | "moderate" | "high" | "unreliable";
+
 export interface LiveReading {
   device_id: string;
   time: string;
-  acetone_delta: number;
-  label: "low" | "moderate" | "high" | "unreliable";
+  /** Acetone signal delta in **millivolts** (voltage delta from baseline × 1000) */
+  acetone_delta_mv: number;
+  sensor_voltage: number | null;
+  baseline_voltage: number | null;
+  pressure_kpa: number | null;
+  temperature: number | null;
+  humidity: number | null;
+  label: AcetoneLabel;
   quality_score: number;
   confidence_score: number;
 }
@@ -19,9 +27,13 @@ interface StreamState {
 
 function getWsBase(): string {
   const explicit = process.env.NEXT_PUBLIC_WS_URL;
-  if (explicit) return explicit.replace(/\/$/, "");
+  if (explicit && /^wss?:\/\//i.test(explicit)) {
+    return explicit.replace(/\/$/, "").replace(/\/ws$/, "");
+  }
   const api = process.env.NEXT_PUBLIC_API_URL ?? "";
-  if (api) return api.replace(/^http/, "ws").replace(/\/$/, "");
+  if (api && /^https?:\/\//i.test(api)) {
+    return api.replace(/^http/i, "ws").replace(/\/$/, "").replace(/\/api$/, "");
+  }
   if (typeof window !== "undefined") {
     const proto = window.location.protocol === "https:" ? "wss" : "ws";
     return `${proto}://${window.location.host}`;

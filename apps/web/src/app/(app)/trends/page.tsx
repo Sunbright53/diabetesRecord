@@ -149,8 +149,8 @@ export default function TrendsPage() {
             {liveReading ? (
               <div className="grid grid-cols-3 gap-3">
                 <div className="bg-surface-2 rounded-xl p-3 text-center">
-                  <p className="text-2xl font-bold text-charcoal-500">{liveReading.acetone_delta.toFixed(1)}</p>
-                  <p className="text-[10px] text-muted mt-0.5">ppm acetone</p>
+                  <p className="text-2xl font-bold text-charcoal-500">{liveReading.acetone_delta_mv.toFixed(0)}</p>
+                  <p className="text-[10px] text-muted mt-0.5">mV acetone Δ</p>
                 </div>
                 <div className="bg-surface-2 rounded-xl p-3 text-center">
                   <p className="text-2xl font-bold text-charcoal-500">{liveReading.quality_score.toFixed(0)}</p>

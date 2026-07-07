@@ -64,6 +64,7 @@ export interface UserOut {
   email: string;
   created_at: string;
   profile: ProfileOut | null;
+  is_admin?: boolean;
 }
 
 export interface RegisterRequest {
@@ -227,18 +228,29 @@ export interface AdminReadingOut {
 }
 
 // ─── Sensor ──────────────────────────────────────────
+/**
+ * MetaBreath sensor reading. Column semantics after firmware v1 (metabreath.ino):
+ *   - ambient_voc    = TGS1820 baseline_voltage (V)
+ *   - breath_voc     = TGS1820 sensor_voltage   (V)
+ *   - acetone_delta  = (sensor - baseline) × 1000 (mV)
+ *   - pressure_mean  = XGZP6847A pressure_kpa   (kPa)
+ *   - temp_c/humidity_pct = SHT31 readings
+ */
 export interface SensorReadingOut {
   time: string;
   device_id: string;
-  ambient_voc: number | null;
-  breath_voc: number | null;
-  acetone_delta: number | null;
+  ambient_voc: number | null;     // baseline_voltage (V)
+  breath_voc: number | null;      // sensor_voltage (V)
+  acetone_delta: number | null;   // mV
+  pressure_mean: number | null;   // kPa (breath pressure)
+  temp_c: number | null;
+  humidity_pct: number | null;
   quality_score: number | null;
   reliability_score: number | null;
   environment_penalty: number | null;
   metabolic_risk_index: number | null;
   confidence_score: number | null;
-  label: string | null;
+  label: string | null;           // clean|low|moderate|high|unreliable
 }
 
 export interface DeviceOut {

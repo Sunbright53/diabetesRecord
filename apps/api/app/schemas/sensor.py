@@ -8,19 +8,26 @@ class SensorReadingCreate(BaseModel):
     time: datetime
     device_id: UUID
 
-    # MetaBreath raw sensor values
+    # MetaBreath firmware payload (metabreath.ino)
+    sensor_voltage: Optional[float] = Field(None, ge=0.0, le=3.3, description="TGS1820 direct read (V)")
+    baseline_voltage: Optional[float] = Field(None, ge=0.0, le=3.3, description="TGS1820 clean-air baseline (V)")
+    acetone_delta_mv: Optional[float] = Field(None, description="(sensor - baseline) * 1000 (mV)")
+    pressure_kpa: Optional[float] = Field(None, ge=0.0, le=15.0, description="XGZP6847A breath pressure (kPa)")
+
+    # Legacy raw fields — populated from firmware equivalents by MQTT worker
     ambient_voc: Optional[float] = None
     breath_voc: Optional[float] = None
     pressure_mean: Optional[float] = None
     pressure_std: Optional[float] = None
     breath_duration: Optional[float] = None
-
-    # Legacy fields
     voc_ppb: Optional[float] = None
     ketone_mmol: Optional[float] = None
-    temp_c: Optional[float] = None
-    humidity_pct: Optional[float] = None
+    temp_c: Optional[float] = Field(None, alias="temperature")
+    humidity_pct: Optional[float] = Field(None, alias="humidity")
     raw: Optional[dict] = None
+
+    class Config:
+        populate_by_name = True
 
 
 class SensorReadingOut(BaseModel):
@@ -61,11 +68,12 @@ class SensorReadingOut(BaseModel):
 
 
 class CalibrationCreate(BaseModel):
-    baseline_voc: float = Field(..., ge=0.0, le=200.0, description="Ambient VOC baseline in ppm (0–200)")
+    # baseline_voc column is reused to store TGS1820 baseline VOLTAGE (V) in the new pipeline
+    baseline_voc: float = Field(..., ge=0.0, le=3.3, description="TGS1820 baseline voltage in V (0–3.3)")
     baseline_temp: Optional[float] = Field(None, ge=-40.0, le=85.0)
     baseline_humidity: Optional[float] = Field(None, ge=0.0, le=100.0)
-    baseline_pressure: Optional[float] = Field(None, ge=800.0, le=1100.0)
-    method: Optional[str] = "zero"
+    baseline_pressure: Optional[float] = Field(None, ge=0.0, le=15.0, description="Breath pressure at baseline (kPa)")
+    method: Optional[str] = "clean_air"
     reference_device: Optional[str] = None
     notes: Optional[str] = None
 

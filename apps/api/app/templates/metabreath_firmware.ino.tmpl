@@ -4,19 +4,19 @@
 #include <ArduinoJson.h>
 
 // =======================================================
-// USER CONFIG — เปลี่ยน 4 ค่าด้านล่างก่อนใช้งาน
+// AUTO-CONFIGURED via /me/device/{id}/firmware
+// Generated: {{GENERATED_AT}}
+// Device:    {{DEVICE_ID}}
 // =======================================================
-#define WIFI_SSID       "YOUR_WIFI_NAME"
-#define WIFI_PASSWORD   "YOUR_WIFI_PASSWORD"
+#define WIFI_SSID       "{{WIFI_SSID}}"
+#define WIFI_PASSWORD   "{{WIFI_PASSWORD}}"
 
-// ได้จากหน้า /me/device/add → Pair device → คัดลอก Device ID
-#define DEVICE_ID       "2dea05c7-1083-464e-8e7c-11ceb3991ceb"
+#define DEVICE_ID       "{{DEVICE_ID}}"
 
-// MQTT credentials — จาก .env / API /sensor/device/pair
-#define MQTT_BROKER     "metabreath.duckdns.org"
-#define MQTT_PORT       1883
-#define MQTT_USER       "esp32"
-#define MQTT_PASS       "0511182c23b48b7a07c274c2"
+#define MQTT_BROKER     "{{MQTT_BROKER}}"
+#define MQTT_PORT       {{MQTT_PORT}}
+#define MQTT_USER       "{{MQTT_USER}}"
+#define MQTT_PASS       "{{MQTT_PASS}}"
 
 // =======================================================
 // PIN CONFIG
@@ -103,9 +103,7 @@ void setup() {
   // NETWORK LAYER — WiFi + MQTT
   // Auto-detect: if WIFI_SSID or DEVICE_ID still placeholder → serial-only mode
   // ---------------------------------------------------
-  networkEnabled = (strcmp(WIFI_SSID,  "YOUR_WIFI_NAME") != 0) &&
-                   (strcmp(DEVICE_ID,  "2dea05c7-1083-464e-8e7c-11ceb3991ceb") != 0 ||
-                    strlen(DEVICE_ID) == 36);  // any real 36-char UUID counts
+  networkEnabled = (strlen(WIFI_SSID) > 0) && (strlen(DEVICE_ID) == 36);
 
   if (networkEnabled) {
     Serial.println();

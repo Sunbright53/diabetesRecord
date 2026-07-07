@@ -1,10 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from fastapi.responses import PlainTextResponse
+from pydantic import BaseModel, Field
 from sqlmodel import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import List, Optional
 from uuid import UUID
+import os
 
 from app.core.deps import get_current_user
 from app.db.session import get_db
@@ -41,7 +44,7 @@ async def get_provision_token(
     """
     import os
     token = create_access_token(user.id, expires_minutes=10)
-    api_base = os.getenv("API_BASE_URL", "http://metabreath.duckdns.org/api")
+    api_base = os.getenv("API_BASE_URL", "https://metabreath.duckdns.org/api")
     return ProvisionTokenOut(token=token, expires_in=600, api_base=api_base)
 
 
@@ -57,6 +60,7 @@ class DevicePairResponse(BaseModel):
     device_id: str
     mqtt_topic: str
     mqtt_user: str
+    mqtt_pass: str
     mqtt_broker: str
     mqtt_port: int
     secret: str
@@ -96,14 +100,16 @@ async def pair_device(
     await db.commit()
     await db.refresh(device)
 
-    mqtt_broker = os.getenv("MQTT_BROKER_PUBLIC", "localhost")
-    mqtt_port = int(os.getenv("MQTT_PORT", "1883"))
+    mqtt_broker = os.getenv("MQTT_BROKER_PUBLIC", "metabreath.duckdns.org")
+    mqtt_port = int(os.getenv("MQTT_PORT_PUBLIC", "1883"))
     mqtt_user = os.getenv("MQTT_ESP32_USER", "esp32")
+    mqtt_pass = os.getenv("MQTT_ESP32_PASS", "")
 
     return DevicePairResponse(
         device_id=device_id_str,
         mqtt_topic=mqtt_topic,
         mqtt_user=mqtt_user,
+        mqtt_pass=mqtt_pass,
         mqtt_broker=mqtt_broker,
         mqtt_port=mqtt_port,
         secret=secret,
@@ -146,26 +152,27 @@ async def ingest_reading(
     )
     calibration = cal_result.first()
 
-    # Signal processing pipeline
-    ambient = body.ambient_voc or 0.0
-    breath = body.breath_voc or 0.0
+    # Firmware pipeline: delta = (sensor_voltage - baseline_voltage) * 1000  →  mV
+    sensor_voltage    = body.sensor_voltage
+    baseline_voltage  = body.baseline_voltage
+    pressure_kpa      = body.pressure_kpa
 
-    if calibration:
-        breath_corrected = sp.baseline_subtract(breath, calibration.baseline_voc, calibration.gain_factor, calibration.offset)
+    if calibration and calibration.baseline_voc:
+        effective_baseline = calibration.baseline_voc  # server-calibrated overrides on-chip
     else:
-        breath_corrected = breath - ambient
+        effective_baseline = baseline_voltage
 
-    breath_compensated = sp.env_compensate(breath_corrected, body.temp_c, body.humidity_pct)
-    acetone_delta = sp.pressure_normalize(
-        breath_compensated, body.pressure_mean, body.breath_duration
-    )
+    if body.acetone_delta_mv is not None:
+        acetone_delta_mv = body.acetone_delta_mv
+    elif sensor_voltage is not None and effective_baseline is not None:
+        acetone_delta_mv = (sensor_voltage - effective_baseline) * 1000.0
+    else:
+        acetone_delta_mv = 0.0
 
     q_score = sp.quality_score(
-        ambient_voc=body.ambient_voc,
-        breath_voc=body.breath_voc,
-        breath_duration=body.breath_duration,
-        pressure_mean=body.pressure_mean,
-        pressure_std=body.pressure_std,
+        sensor_voltage=sensor_voltage,
+        baseline_voltage=effective_baseline,
+        pressure_kpa=pressure_kpa,
         temp_c=body.temp_c,
         humidity_pct=body.humidity_pct,
     )
@@ -178,8 +185,12 @@ async def ingest_reading(
     env_pen = sp.environment_penalty(body.temp_c, body.humidity_pct)
 
     confidence = r_score / 100.0
-    classification = sp.classify_acetone(acetone_delta, confidence)
+    classification = sp.classify_acetone(acetone_delta_mv, confidence)
 
+    # Reuse legacy columns: ambient_voc = baseline_voltage (V),
+    #                       breath_voc  = sensor_voltage (V),
+    #                       acetone_delta stored in mV,
+    #                       pressure_mean = pressure_kpa (kPa)
     reading = SensorReading(
         time=body.time,
         device_id=body.device_id,
@@ -188,12 +199,12 @@ async def ingest_reading(
         temp_c=body.temp_c,
         humidity_pct=body.humidity_pct,
         raw=body.raw,
-        ambient_voc=body.ambient_voc,
-        breath_voc=body.breath_voc,
-        acetone_delta=round(acetone_delta, 4),
-        pressure_mean=body.pressure_mean,
-        pressure_std=body.pressure_std,
-        breath_duration=body.breath_duration,
+        ambient_voc=baseline_voltage,
+        breath_voc=sensor_voltage,
+        acetone_delta=round(acetone_delta_mv, 4),
+        pressure_mean=pressure_kpa,
+        pressure_std=None,
+        breath_duration=None,
         quality_score=round(q_score, 2),
         reliability_score=round(r_score, 2),
         environment_penalty=env_pen,
@@ -363,5 +374,73 @@ async def calibration_report(
         reference_comparison={
             "method": latest.method,
             "reference_device": latest.reference_device,
+        },
+    )
+
+
+# ─── Firmware generator (Arduino .ino) ───────────────────────────────────────
+
+FIRMWARE_TEMPLATE_PATH = Path(__file__).resolve().parent.parent / "templates" / "metabreath_firmware.ino.tmpl"
+
+
+class FirmwareConfigRequest(BaseModel):
+    wifi_ssid: str = Field(..., min_length=1, max_length=32)
+    wifi_password: str = Field(..., max_length=63)
+
+
+def _escape_c_string(s: str) -> str:
+    """Escape a string so it's safe to embed inside a C double-quoted literal."""
+    return (
+        s.replace("\\", "\\\\")
+         .replace('"', '\\"')
+         .replace("\n", "\\n")
+         .replace("\r", "\\r")
+         .replace("\t", "\\t")
+    )
+
+
+@router.post("/device/{device_id}/firmware", response_class=PlainTextResponse)
+async def generate_configured_firmware(
+    device_id: UUID,
+    body: FirmwareConfigRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Generate a device-specific Arduino .ino file with WiFi + MQTT credentials
+    pre-filled. User downloads and flashes via Arduino IDE.
+    """
+    device_result = await db.exec(
+        select(Device).where(Device.id == device_id, Device.user_id == user.id)
+    )
+    device = device_result.first()
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+
+    if not FIRMWARE_TEMPLATE_PATH.exists():
+        raise HTTPException(status_code=500, detail="Firmware template missing on server")
+
+    template = FIRMWARE_TEMPLATE_PATH.read_text(encoding="utf-8")
+
+    substitutions = {
+        "{{WIFI_SSID}}":     _escape_c_string(body.wifi_ssid),
+        "{{WIFI_PASSWORD}}": _escape_c_string(body.wifi_password),
+        "{{DEVICE_ID}}":     str(device_id),
+        "{{MQTT_BROKER}}":   os.getenv("MQTT_BROKER_PUBLIC", "metabreath.duckdns.org"),
+        "{{MQTT_PORT}}":     os.getenv("MQTT_PORT_PUBLIC", "1883"),
+        "{{MQTT_USER}}":     os.getenv("MQTT_ESP32_USER", "esp32"),
+        "{{MQTT_PASS}}":     os.getenv("MQTT_ESP32_PASS", ""),
+        "{{GENERATED_AT}}":  datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC"),
+    }
+    for marker, value in substitutions.items():
+        template = template.replace(marker, value)
+
+    filename = f"metabreath_{str(device_id)[:8]}.ino"
+    return PlainTextResponse(
+        content=template,
+        media_type="text/x-arduino",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Cache-Control": "no-store",
         },
     )

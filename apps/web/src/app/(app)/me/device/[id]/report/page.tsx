@@ -60,10 +60,13 @@ export default function CalibrationReportPage() {
     );
   }
 
-  const driftPct = report.drift_slope_ppm_per_day;
-  const driftStatus = Math.abs(driftPct) < 0.05 ? "ok" : Math.abs(driftPct) < 0.15 ? "warn" : "bad";
+  // Baseline drift in mV/day (baseline_voc column now stores voltage in V, so scale ×1000)
+  const driftMvPerDay = report.drift_slope_ppm_per_day * 1000;
+  const driftStatus = Math.abs(driftMvPerDay) < 2 ? "ok" : Math.abs(driftMvPerDay) < 5 ? "warn" : "bad";
   const cvStatus = report.repeatability_cv_pct < 5 ? "ok" : report.repeatability_cv_pct < 12 ? "warn" : "bad";
-  const lodStatus = report.lod_ppm < 0.3 ? "ok" : report.lod_ppm < 0.5 ? "warn" : "bad";
+  // LoD: report.lod_ppm actually stores 3σ of baseline voltage in V; convert to mV
+  const lodMv = report.lod_ppm * 1000;
+  const lodStatus = lodMv < 3 ? "ok" : lodMv < 8 ? "warn" : "bad";
 
   return (
     <div className="max-w-md mx-auto px-4 pt-5 pb-24 space-y-5">
@@ -104,10 +107,10 @@ export default function CalibrationReportPage() {
       <div>
         <p className="text-xs text-text-muted font-semibold uppercase tracking-widest mb-3">Performance Metrics</p>
         <div className="grid grid-cols-2 gap-3">
-          <Metric label="Limit of Detection (LoD)" value={report.lod_ppm.toFixed(3)} unit="ppm" status={lodStatus} />
+          <Metric label="Limit of Detection (3σ)" value={lodMv.toFixed(1)} unit="mV" status={lodStatus} />
           <Metric label="Repeatability CV" value={report.repeatability_cv_pct.toFixed(1)} unit="%" status={cvStatus} />
-          <Metric label="Drift Slope" value={(Math.abs(driftPct) * 1000).toFixed(1)} unit="ppb/day" status={driftStatus} />
-          <Metric label="Latest Drift Score" value={(report.latest_drift_score * 100).toFixed(0)} unit="%" status={report.latest_drift_score < 0.3 ? "ok" : report.latest_drift_score < 0.6 ? "warn" : "bad"} />
+          <Metric label="Baseline Drift" value={Math.abs(driftMvPerDay).toFixed(1)} unit="mV/day" status={driftStatus} />
+          <Metric label="Drift Score" value={(report.latest_drift_score * 100).toFixed(0)} unit="%" status={report.latest_drift_score < 0.3 ? "ok" : report.latest_drift_score < 0.6 ? "warn" : "bad"} />
         </div>
       </div>
 
@@ -116,10 +119,10 @@ export default function CalibrationReportPage() {
         <p className="text-sm font-semibold text-text-primary mb-3">เกณฑ์อ้างอิง (TGS1820)</p>
         <div className="space-y-2">
           {[
-            { label: "LoD ดี",            threshold: "< 0.3 ppm",      status: "ok"   },
-            { label: "CV ดี",              threshold: "< 5%",           status: "ok"   },
-            { label: "CV ยอมรับได้",       threshold: "5–12%",          status: "warn" },
-            { label: "Drift ต้องระวัง",    threshold: "> 0.15 ppm/day", status: "bad"  },
+            { label: "LoD ดี",            threshold: "< 3 mV",       status: "ok"   },
+            { label: "CV ดี",              threshold: "< 5%",         status: "ok"   },
+            { label: "CV ยอมรับได้",       threshold: "5–12%",        status: "warn" },
+            { label: "Drift ต้องระวัง",    threshold: "> 5 mV/day",   status: "bad"  },
           ].map(({ label, threshold, status }) => (
             <div key={label} className="flex justify-between items-center text-xs py-1.5 border-b border-border-soft last:border-0">
               <span className="text-text-muted">{label}</span>
