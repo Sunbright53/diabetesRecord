@@ -50,3 +50,7 @@ Thumbs.db
 
 # content generated
 .contentlayer/
+
+# large datasets & reference material (kept locally only)
+/data/
+/แข่งชนะ by Coach Bright_NSC/

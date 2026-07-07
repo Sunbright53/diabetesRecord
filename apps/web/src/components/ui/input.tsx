@@ -21,7 +21,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
           ref={ref}
           id={inputId}
           className={twMerge(
-            "h-11 w-full rounded-xl border border-border bg-white px-4 text-sm outline-none transition placeholder:text-gray-400",
+            "h-11 w-full rounded-xl border border-border bg-white text-gray-900 px-4 text-sm outline-none transition placeholder:text-gray-400",
             "focus:border-mint-500 focus:ring-2 focus:ring-mint-500/20",
             error && "border-red-400 focus:border-red-400 focus:ring-red-400/20",
             className

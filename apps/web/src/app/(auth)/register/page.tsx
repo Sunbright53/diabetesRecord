@@ -77,7 +77,7 @@ export default function RegisterPage() {
   return (
     <Card>
       <CardContent className="pt-6">
-        <h2 className="text-xl font-semibold text-charcoal-500 mb-1 tracking-tight">{t("auth.registerTitle")}</h2>
+        <h2 className="text-xl font-semibold text-gray-900 mb-1 tracking-tight">{t("auth.registerTitle")}</h2>
         <p className="text-sm text-muted mb-6">{t("auth.registerWelcome")}</p>
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
@@ -115,7 +115,7 @@ export default function RegisterPage() {
 
           {/* Goal type */}
           <div className="space-y-2">
-            <p className="text-sm font-medium text-charcoal-500/80">{t("auth.goalPrompt")}</p>
+            <p className="text-sm font-medium text-gray-900/80">{t("auth.goalPrompt")}</p>
             <div className="grid grid-cols-2 gap-2">
               {GOALS.map(({ value, Icon }) => {
                 const label = t(`goal.${value}`);
@@ -133,8 +133,8 @@ export default function RegisterPage() {
                         : "border-border-soft hover:border-mint-300/70 hover:bg-mint-50/30"
                     )}
                   >
-                    <Icon size={18} className={active ? "text-mint-600" : "text-charcoal-500/70"} strokeWidth={1.6} />
-                    <p className="text-sm font-medium text-charcoal-500 mt-2">{label}</p>
+                    <Icon size={18} className={active ? "text-mint-600" : "text-gray-900/70"} strokeWidth={1.6} />
+                    <p className="text-sm font-medium text-gray-900 mt-2">{label}</p>
                     <p className="text-xs text-muted mt-0.5 leading-relaxed">{desc}</p>
                   </button>
                 );

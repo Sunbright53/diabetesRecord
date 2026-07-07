@@ -43,7 +43,7 @@ export default function LoginPage() {
   return (
     <Card>
       <CardContent className="pt-6">
-        <h2 className="text-xl font-semibold text-charcoal-500 mb-1 tracking-tight">{t("auth.loginTitle")}</h2>
+        <h2 className="text-xl font-semibold text-gray-900 mb-1 tracking-tight">{t("auth.loginTitle")}</h2>
         <p className="text-sm text-muted mb-6">{t("auth.loginWelcome")}</p>
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">

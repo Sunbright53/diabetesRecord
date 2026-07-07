@@ -11,7 +11,8 @@ python-multipart==0.0.12
 celery[redis]==5.4.0
 redis==5.2.1
 # redbeat — add in Phase 3 when scheduler needed
-asyncio-mqtt==0.16.2
+aiomqtt==2.3.0
+paho-mqtt>=2.0.0,<3
 pywebpush==2.0.0
 httpx==0.28.1
 pydantic-settings==2.6.1

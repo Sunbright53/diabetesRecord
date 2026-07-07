@@ -1,5 +1,6 @@
+import json
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import computed_field
+from pydantic import Field, computed_field
 from typing import List
 from urllib.parse import quote_plus
 
@@ -37,12 +38,31 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MIN: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 30
 
-    CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:3010"]
+    CORS_ORIGINS_RAW: str = Field(
+        default="http://localhost:3000,http://localhost:3010",
+        validation_alias="CORS_ORIGINS",
+    )
+
+    @computed_field
+    @property
+    def CORS_ORIGINS(self) -> List[str]:
+        s = self.CORS_ORIGINS_RAW.strip()
+        if s.startswith("["):
+            try:
+                return json.loads(s)
+            except json.JSONDecodeError:
+                pass
+        return [x.strip() for x in s.split(",") if x.strip()]
 
     MQTT_HOST: str = "mqtt"
     MQTT_PORT: int = 1883
-    MQTT_USER: str = "cheewarun_server"
-    MQTT_PASS: str = "changeme"
+    MQTT_USER: str = "api"
+    MQTT_PASSWORD: str = ""
+    MQTT_ESP32_USER: str = "esp32"
+    MQTT_ESP32_PASS: str = ""
+    MQTT_BROKER_PUBLIC: str = "metabreath.duckdns.org"
+    MQTT_PORT_PUBLIC: int = 1883
+    API_BASE_URL: str = "https://metabreath.duckdns.org/api"
 
     OPENAI_API_KEY: str = ""
     OPENAI_MODEL: str = "gpt-4o-mini"

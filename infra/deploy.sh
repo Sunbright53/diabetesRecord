@@ -7,7 +7,7 @@ cd /root/cheewarun
 echo "[deploy] Pulling latest code..."
 git pull
 # Never run dev overrides in production
-rm -f docker-compose.override.yml
+rm -f docker-compose.override.yml docker-compose.dev.yml
 
 echo "[deploy] Pulling new images..."
 docker compose pull --ignore-pull-failures
