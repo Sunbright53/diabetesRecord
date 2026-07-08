@@ -11,26 +11,62 @@ from __future__ import annotations
 import re
 
 # ─── Medical content categories that must be blocked ─────────────────────────
+# NOTE on \b (word boundary):
+#   Python's re treats Thai characters as \w, so a \b requires a transition
+#   between Thai (word) and space/punctuation (non-word). Thai is written
+#   without spaces between words, so \b usually FAILS inside Thai sentences.
+#   → Thai patterns must NOT use \b. English patterns can keep \b safely.
 
-BANNED_PATTERNS = [
-    # Drug / medication recommendations
-    r"\b(insulin\s*dose|metformin|ozempic|wegovy|saxenda|victoza|jardiance|januvia|glipizide|glibenclamide|acarbose)\b",
-    r"\b(ให้ฉีด|ปรับยา|ลดยา|เพิ่มยา|หยุดยา|เปลี่ยนยา)\b",
-    r"\b(inject|dosage adjustment|medication change|stop your medication)\b",
+BANNED_PATTERNS_EN = [
+    # Drug names + dose/injection words
+    r"\b(insulin|metformin|ozempic|wegovy|saxenda|victoza|jardiance|januvia|glipizide|glibenclamide|acarbose)\b.*\b(dose|dosage|adjust|change|inject|amount|how much|how many)\b",
+    r"\b(dose|dosage)\s*adjust(ment)?\b",
+    r"\b(medication|meds?)\s*(change|adjust|stop)\b",
+    r"\b(stop|adjust|change)\s+your\s+(medication|meds?|dose|dosage)\b",
+    r"\b(inject\s+(more|less|extra))\b",
+    r"\b(ozempic|wegovy|saxenda|victoza|jardiance|januvia|glipizide|glibenclamide|metformin)\b",
 
-    # Specific diagnosis
-    r"\b(คุณเป็นเบาหวาน|diagnosed with diabetes|you have diabetes|you are diabetic)\b",
-    r"\b(DKA|diabetic ketoacidosis\s*confirmed)\b",
+    # Diagnosis
+    r"\b(you\s+(have|are)|diagnosed\s+with)\s+(diabet(es|ic)|prediabetes|DKA|ketoacidosis)\b",
+    r"\bDKA\b",
+    r"\bdiabetic\s+ketoacidosis\b",
 
-    # Emergency mismanagement
-    r"\b(ไม่ต้องไปหาหมอ|don't need a doctor|no need for medical attention)\b",
+    # Denying medical need
+    r"\b(don't|do\s+not|no)\s+need\s+(a\s+)?(doctor|medical\s+attention|physician|hospital)\b",
 
-    # Weight-loss extremes
-    r"\b(อดอาหาร\s*\d+\s*วัน|fast for \d+ days|VLCD|very low calorie)\b",
+    # Extreme fasting
+    r"\bfast(ing)?\s+for\s+\d+\s+days?\b",
+    r"\bVLCD\b|\bvery\s+low\s+calorie\b",
 
-    # Self-harm triggers
-    r"\b(ทำร้ายตัวเอง|suicide|self.harm|cut yourself)\b",
+    # Self-harm
+    r"\bsuicide\b|\bself.?harm\b|\bkill\s+(myself|yourself)\b",
+    r"\b(cut|hurt)\s+(myself|yourself)\b",
+    r"\bi\s+want\s+to\s+die\b",
 ]
+
+# Thai — no \b (Thai has no inter-word spaces)
+BANNED_PATTERNS_TH = [
+    # Drug / dose / injection recommendations
+    r"(ให้ฉีด|ปรับยา|ลดยา|เพิ่มยา|หยุดยา|เปลี่ยนยา|เปลี่ยนขนาดยา|ปรับขนาดยา)",
+    r"ฉีด\s*(insulin|อินซูลิน|ยา)",
+    r"(insulin|อินซูลิน|metformin|เม็ทฟอร์มิน).{0,15}(เท่าไหร่|เท่าไร|กี่|ขนาด|dose)",
+
+    # Diagnosis (patient asking for verdict)
+    r"(คุณเป็นเบาหวาน|ฉันเป็นเบาหวาน|เป็นเบาหวานไหม|ผมเป็นเบาหวาน|หนูเป็นเบาหวาน)",
+    r"(เป็น\s*DKA|เป็น\s*ketoacidosis|ฉันเป็น\s*DKA)",
+
+    # Denying medical need
+    r"(ไม่ต้องไปหาหมอ|ไม่ต้องพบแพทย์|ไม่ต้องปรึกษาแพทย์|ไม่จำเป็นต้องไปหาหมอ)",
+
+    # Extreme fasting
+    r"อดอาหาร\s*\d+\s*วัน",
+    r"ไม่กิน(อะไร)?\s*\d+\s*วัน",
+
+    # Self-harm
+    r"(ทำร้ายตัวเอง|อยากตาย|อยากฆ่าตัวตาย|ฆ่าตัวตาย|จบชีวิต)",
+]
+
+BANNED_PATTERNS = BANNED_PATTERNS_EN + BANNED_PATTERNS_TH
 
 _COMPILED = [re.compile(p, re.IGNORECASE | re.UNICODE) for p in BANNED_PATTERNS]
 
