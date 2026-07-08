@@ -283,6 +283,242 @@ async def submit_reading(
     return reading
 
 
+# ─── Per-user dashboard ──────────────────────────────────────────────────────
+
+class DashboardDevice(BaseModel):
+    id: str
+    kind: str
+    sensor_model: Optional[str]
+    active: bool
+    needs_recalibration: bool
+    last_calibrated_at: Optional[datetime]
+    last_seen_at: Optional[datetime]
+    baseline_voc: Optional[float]
+    drift_score: Optional[float]
+    total_readings: int
+
+
+class DashboardReading(BaseModel):
+    time: datetime
+    device_id: str
+    acetone_delta: Optional[float]
+    quality_score: Optional[float]
+    reliability_score: Optional[float]
+    temp_c: Optional[float]
+    humidity_pct: Optional[float]
+    pressure_mean: Optional[float]
+    label: Optional[str]
+    metabolic_risk_index: Optional[int]
+    confidence_score: Optional[float]
+
+
+class DashboardKPI(BaseModel):
+    total_readings: int
+    active_days: int
+    avg_acetone_delta: Optional[float]
+    avg_quality_score: Optional[float]
+    avg_reliability_score: Optional[float]
+    last_reading_at: Optional[datetime]
+
+
+class DashboardKetoneLog(BaseModel):
+    ts: datetime
+    ketone_type: str
+    value_mmol: Optional[float]
+    urine_category: Optional[str]
+    source: Optional[str]
+
+
+class UserDashboardOut(BaseModel):
+    user: dict          # id, email, username, display_name, created_at
+    window_days: int
+    kpi: DashboardKPI
+    devices: List[DashboardDevice]
+    label_counts: dict  # {clean, low, moderate, high, unreliable}
+    series: List[DashboardReading]     # ≤ 200 downsampled points for chart
+    recent: List[DashboardReading]     # last 20 raw
+    ketone_logs: List[DashboardKetoneLog]
+
+
+@router.get("/user/{user_id}/dashboard", response_model=UserDashboardOut)
+async def user_dashboard(
+    user_id: str,
+    days: int = 7,
+    _admin: User = Depends(get_admin_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return everything the admin dashboard needs for a single user."""
+    from datetime import timedelta
+
+    try:
+        uid = UUID(user_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid user_id")
+
+    days = max(1, min(days, 90))
+    since = datetime.utcnow() - timedelta(days=days)
+
+    user_result = await db.exec(select(User).where(User.id == uid, User.is_active == True))
+    user = user_result.first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    profile_result = await db.exec(select(Profile).where(Profile.user_id == uid))
+    profile = profile_result.first()
+
+    # ── Devices for this user ────────────────────────────────────────────────
+    devices_result = await db.exec(select(Device).where(Device.user_id == uid))
+    devices = list(devices_result.all())
+    device_ids = [d.id for d in devices]
+
+    if not device_ids:
+        return UserDashboardOut(
+            user={
+                "id": str(user.id),
+                "email": user.email,
+                "username": user.username,
+                "display_name": profile.display_name if profile else None,
+                "created_at": user.created_at.isoformat(),
+            },
+            window_days=days,
+            kpi=DashboardKPI(total_readings=0, active_days=0, avg_acetone_delta=None,
+                             avg_quality_score=None, avg_reliability_score=None, last_reading_at=None),
+            devices=[], label_counts={}, series=[], recent=[], ketone_logs=[],
+        )
+
+    # ── Readings in window ───────────────────────────────────────────────────
+    readings_result = await db.exec(
+        select(SensorReading)
+        .where(SensorReading.device_id.in_(device_ids), SensorReading.time >= since)
+        .order_by(SensorReading.time.asc())
+    )
+    readings = list(readings_result.all())
+
+    # ── Per-device stats (last_seen, baseline, drift, total) ─────────────────
+    device_out: List[DashboardDevice] = []
+    for d in devices:
+        last_read_result = await db.exec(
+            select(SensorReading)
+            .where(SensorReading.device_id == d.id)
+            .order_by(SensorReading.time.desc())
+        )
+        last_read = last_read_result.first()
+
+        cal_result = await db.exec(
+            select(DeviceCalibration)
+            .where(DeviceCalibration.device_id == d.id)
+            .order_by(DeviceCalibration.calibrated_at.desc())
+        )
+        cal = cal_result.first()
+
+        count_result = await db.exec(
+            select(func.count(SensorReading.time)).where(SensorReading.device_id == d.id)
+        )
+        total = count_result.one() or 0
+
+        device_out.append(DashboardDevice(
+            id=str(d.id),
+            kind=d.kind,
+            sensor_model=d.sensor_model,
+            active=d.active,
+            needs_recalibration=d.needs_recalibration,
+            last_calibrated_at=d.last_calibrated_at,
+            last_seen_at=last_read.time if last_read else None,
+            baseline_voc=cal.baseline_voc if cal else None,
+            drift_score=cal.drift_score if cal else None,
+            total_readings=total,
+        ))
+
+    # ── KPI ──────────────────────────────────────────────────────────────────
+    valid_acetone = [r.acetone_delta for r in readings if r.acetone_delta is not None and r.label != "unreliable"]
+    valid_quality = [r.quality_score for r in readings if r.quality_score is not None]
+    valid_reliab  = [r.reliability_score for r in readings if r.reliability_score is not None]
+    active_days   = len({r.time.date() for r in readings})
+    last_read     = readings[-1] if readings else None
+
+    kpi = DashboardKPI(
+        total_readings=len(readings),
+        active_days=active_days,
+        avg_acetone_delta=round(sum(valid_acetone) / len(valid_acetone), 2) if valid_acetone else None,
+        avg_quality_score=round(sum(valid_quality) / len(valid_quality), 1) if valid_quality else None,
+        avg_reliability_score=round(sum(valid_reliab) / len(valid_reliab), 1) if valid_reliab else None,
+        last_reading_at=last_read.time if last_read else None,
+    )
+
+    # ── Label distribution ───────────────────────────────────────────────────
+    label_counts: dict = {}
+    for r in readings:
+        lbl = r.label or "unknown"
+        label_counts[lbl] = label_counts.get(lbl, 0) + 1
+
+    # ── Downsample series → ≤ 200 points ─────────────────────────────────────
+    MAX_POINTS = 200
+    stride = max(1, len(readings) // MAX_POINTS)
+    sampled = readings[::stride][:MAX_POINTS]
+    series = [
+        DashboardReading(
+            time=r.time, device_id=str(r.device_id),
+            acetone_delta=r.acetone_delta, quality_score=r.quality_score,
+            reliability_score=r.reliability_score,
+            temp_c=r.temp_c, humidity_pct=r.humidity_pct, pressure_mean=r.pressure_mean,
+            label=r.label, metabolic_risk_index=r.metabolic_risk_index,
+            confidence_score=r.confidence_score,
+        )
+        for r in sampled
+    ]
+
+    # ── Recent 20 raw ────────────────────────────────────────────────────────
+    recent_result = await db.exec(
+        select(SensorReading)
+        .where(SensorReading.device_id.in_(device_ids))
+        .order_by(SensorReading.time.desc())
+    )
+    recent_all = list(recent_result.all())[:20]
+    recent = [
+        DashboardReading(
+            time=r.time, device_id=str(r.device_id),
+            acetone_delta=r.acetone_delta, quality_score=r.quality_score,
+            reliability_score=r.reliability_score,
+            temp_c=r.temp_c, humidity_pct=r.humidity_pct, pressure_mean=r.pressure_mean,
+            label=r.label, metabolic_risk_index=r.metabolic_risk_index,
+            confidence_score=r.confidence_score,
+        )
+        for r in recent_all
+    ]
+
+    # ── Ketone logs (last 30 days) ───────────────────────────────────────────
+    ket_result = await db.exec(
+        select(KetoneLog)
+        .where(KetoneLog.user_id == uid, KetoneLog.ts >= datetime.utcnow() - timedelta(days=30))
+        .order_by(KetoneLog.ts.desc())
+    )
+    ketone_logs = [
+        DashboardKetoneLog(
+            ts=k.ts, ketone_type=k.ketone_type,
+            value_mmol=k.value_mmol, urine_category=k.urine_category,
+            source=k.source,
+        )
+        for k in ket_result.all()
+    ]
+
+    return UserDashboardOut(
+        user={
+            "id": str(user.id),
+            "email": user.email,
+            "username": user.username,
+            "display_name": profile.display_name if profile else None,
+            "created_at": user.created_at.isoformat(),
+        },
+        window_days=days,
+        kpi=kpi,
+        devices=device_out,
+        label_counts=label_counts,
+        series=series,
+        recent=recent,
+        ketone_logs=ketone_logs,
+    )
+
+
 # ─── Breath ↔ urine ketone agreement ──────────────────────────────────────────
 
 class KetonePair(BaseModel):

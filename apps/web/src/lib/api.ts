@@ -275,6 +275,68 @@ export interface AdminReadingOut {
   label: string | null;
 }
 
+// ─── Admin user dashboard ────────────────────────────
+export interface DashboardDevice {
+  id: string;
+  kind: string;
+  sensor_model: string | null;
+  active: boolean;
+  needs_recalibration: boolean;
+  last_calibrated_at: string | null;
+  last_seen_at: string | null;
+  baseline_voc: number | null;
+  drift_score: number | null;
+  total_readings: number;
+}
+
+export interface DashboardReading {
+  time: string;
+  device_id: string;
+  acetone_delta: number | null;
+  quality_score: number | null;
+  reliability_score: number | null;
+  temp_c: number | null;
+  humidity_pct: number | null;
+  pressure_mean: number | null;
+  label: string | null;
+  metabolic_risk_index: number | null;
+  confidence_score: number | null;
+}
+
+export interface DashboardKPI {
+  total_readings: number;
+  active_days: number;
+  avg_acetone_delta: number | null;
+  avg_quality_score: number | null;
+  avg_reliability_score: number | null;
+  last_reading_at: string | null;
+}
+
+export interface DashboardKetoneLog {
+  ts: string;
+  ketone_type: string;
+  value_mmol: number | null;
+  urine_category: string | null;
+  source: string | null;
+}
+
+export interface UserDashboardOut {
+  user: {
+    id: string;
+    email: string;
+    username: string;
+    display_name: string | null;
+    created_at: string;
+  };
+  window_days: number;
+  kpi: DashboardKPI;
+  devices: DashboardDevice[];
+  label_counts: Record<string, number>;
+  series: DashboardReading[];
+  recent: DashboardReading[];
+  ketone_logs: DashboardKetoneLog[];
+}
+
 // ─── Sensor ──────────────────────────────────────────
 /**
  * MetaBreath sensor reading. Column semantics after firmware v1 (metabreath.ino):
@@ -546,6 +608,8 @@ export const api = {
         method: "POST",
         body: JSON.stringify(data),
       }),
+    userDashboard: (userId: string, days = 7) =>
+      request<UserDashboardOut>(`/admin/user/${userId}/dashboard?days=${days}`),
     ketoneAgreement: () =>
       request<KetoneAgreementOut>("/admin/ketone-agreement"),
   },
