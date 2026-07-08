@@ -1,37 +1,27 @@
 "use client";
 
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useDeviceStream } from "@/lib/useDeviceStream";
 import Link from "next/link";
-import { Wind, ChevronRight, Settings, BarChart2, FlaskConical } from "lucide-react";
-import { toast } from "sonner";
+import { ChevronRight, Settings, BarChart2, FlaskConical } from "lucide-react";
 import { useT } from "@/lib/i18n";
 import { useQueryClient } from "@tanstack/react-query";
 import UrineKetoneLogger from "@/components/UrineKetoneLogger";
-
-const LABEL_TH: Record<string, string> = {
-  clean: "อากาศสะอาด",
-  low: "ต่ำ",
-  moderate: "ปานกลาง",
-  high: "สูง",
-  unreliable: "ไม่แน่ใจ",
-};
-
-const LABEL_COLOR: Record<string, string> = {
-  clean: "text-sky-400",
-  low: "text-mint-500",
-  moderate: "text-amber-400",
-  high: "text-red-400",
-  unreliable: "text-text-muted",
-};
+import BreathSession, {
+  RecentBreathSessions,
+  loadSessions,
+  type SessionSummary,
+} from "@/components/BreathSession";
 
 export default function BreathingPage() {
   const { user } = useAuth();
   const { t } = useT();
   const queryClient = useQueryClient();
   const { reading: liveReading } = useDeviceStream(user?.id);
+  const [sessions, setSessions] = useState<SessionSummary[]>(() => loadSessions());
 
   // "Connected" = actually receiving data (last reading < 60s), not just WS open
   const connected = !!liveReading &&
@@ -43,14 +33,6 @@ export default function BreathingPage() {
   });
 
   const primaryDevice = devices?.[0];
-
-  const { data: readings } = useQuery({
-    queryKey: ["sensor", "readings", primaryDevice?.id],
-    queryFn: () => api.sensor.getReadings(primaryDevice!.id, 7),
-    enabled: !!primaryDevice,
-  });
-
-  const recentReadings = (readings ?? []).slice(-10).reverse();
 
   return (
     <div className="max-w-md mx-auto px-4 pt-5 pb-24 space-y-5">
@@ -77,28 +59,12 @@ export default function BreathingPage() {
         )}
       </div>
 
-      {/* Start session CTA */}
-      <div className="flex flex-col items-center py-8">
-        <button
-          onClick={() => {
-            if (!connected) {
-              toast.error(t("breathing.toastDisconnected"), {
-                description: t("breathing.toastDisconnectedDesc"),
-                action: { label: t("breathing.goToDevice"), onClick: () => window.location.href = "/me/device" },
-              });
-              return;
-            }
-            toast.info(t("breathing.toastStarted"));
-          }}
-          className="h-28 w-28 rounded-full bg-mint-500/10 border-2 border-mint-500/40 flex flex-col items-center justify-center gap-2 hover:bg-mint-500/20 active:scale-95 transition-all duration-200"
-        >
-          <Wind size={32} className={connected ? "text-mint-500" : "text-text-muted"} strokeWidth={1.6} />
-          <span className={`text-xs font-semibold uppercase tracking-wide ${connected ? "text-mint-500" : "text-text-muted"}`}>{t("breathing.startSession")}</span>
-        </button>
-        <p className="text-xs text-text-muted mt-4">
-          {connected ? t("breathing.tapToStart") : t("breathing.connectFirst")}
-        </p>
-      </div>
+      {/* Breath session — START button → 5-second count → result card */}
+      <BreathSession
+        liveReading={liveReading}
+        connected={connected}
+        onSessionSaved={() => setSessions(loadSessions())}
+      />
 
       {/* Quick actions */}
       {primaryDevice && (
@@ -123,49 +89,8 @@ export default function BreathingPage() {
         onLogged={() => queryClient.invalidateQueries({ queryKey: ["logs", "ketone"] })}
       />
 
-      {/* Recent sessions */}
-      <div>
-        <div className="flex items-center justify-between mb-3">
-          <p className="text-xs text-text-muted font-semibold uppercase tracking-widest">{t("breathing.recentSessions")}</p>
-        </div>
-
-        {recentReadings.length === 0 ? (
-          <div className="bg-bg-elevated rounded-2xl p-6 text-center">
-            <p className="text-sm text-text-muted">{t("breathing.noHistory")}</p>
-            <p className="text-xs text-text-disabled mt-1">{t("breathing.noHistorySub")}</p>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {recentReadings.map((r, idx) => (
-              <div key={r.time + idx} className="bg-bg-elevated rounded-2xl p-4 flex items-center gap-3">
-                <div className="w-14 text-right">
-                  <p className="text-xs text-text-muted">
-                    {new Date(r.time).toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" })}
-                  </p>
-                  <p className="text-[10px] text-text-disabled mt-0.5">
-                    {new Date(r.time).toLocaleDateString("th-TH", { month: "short", day: "numeric" })}
-                  </p>
-                </div>
-                <div className="flex-1">
-                  <p className="text-sm font-semibold text-text-primary">
-                    {r.acetone_delta?.toFixed(0) ?? "—"} mV
-                  </p>
-                  <p className="text-xs text-text-muted mt-0.5">
-                    {r.pressure_mean != null && `${r.pressure_mean.toFixed(2)} kPa`}
-                    {r.pressure_mean != null && r.quality_score != null && " · "}
-                    {r.quality_score ? `Q: ${r.quality_score.toFixed(0)}/100` : ""}
-                  </p>
-                </div>
-                {r.label && (
-                  <span className={`text-xs font-semibold ${LABEL_COLOR[r.label] ?? "text-text-muted"}`}>
-                    {LABEL_TH[r.label] ?? r.label}
-                  </span>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+      {/* Recent sessions — stored locally after each breath session */}
+      <RecentBreathSessions sessions={sessions} />
     </div>
   );
 }
