@@ -19,6 +19,14 @@ from app.schemas.sensor import (
     CalibrationReportOut, DeviceOut,
 )
 from app.services import signal_processing as sp
+from app.services.device_session import (
+    resolve_reading_user,
+    get_active_session,
+    claim_device as claim_session,
+    release_device as release_session,
+    SESSION_TTL,
+)
+from app.models.health import DeviceSession
 
 from app.core.security import create_access_token
 
@@ -128,6 +136,114 @@ async def list_devices(user: User = Depends(get_current_user), db: AsyncSession 
     return result.all()
 
 
+# ─── Shared device pool (session-based multi-user access) ────────────────────
+
+class SharedDeviceOut(BaseModel):
+    id: str
+    kind: str
+    sensor_model: Optional[str]
+    active: bool
+    needs_recalibration: bool
+    last_seen_at: Optional[datetime]
+    # Active claim, if any
+    claimed_by_username: Optional[str] = None
+    claimed_by_me: bool = False
+    session_expires_at: Optional[datetime] = None
+
+
+class ClaimResponse(BaseModel):
+    device_id: str
+    session_id: str
+    expires_at: datetime
+    displaced_username: Optional[str] = None  # user we kicked, if any
+
+
+@router.get("/devices/pool", response_model=List[SharedDeviceOut])
+async def list_shared_devices(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """All is_shared=True devices, with their current active claimer (if any)."""
+    devices_result = await db.exec(
+        select(Device).where(Device.is_shared == True, Device.active == True)  # noqa: E712
+    )
+    devices = list(devices_result.all())
+    out: List[SharedDeviceOut] = []
+    for d in devices:
+        session = await get_active_session(d.id, db)
+        claimer_username: Optional[str] = None
+        if session:
+            claimer_result = await db.exec(select(User).where(User.id == session.user_id))
+            claimer = claimer_result.first()
+            claimer_username = claimer.username if claimer else None
+
+        # Last-seen from newest reading (small O(1) query per device)
+        last_read_result = await db.exec(
+            select(SensorReading)
+            .where(SensorReading.device_id == d.id)
+            .order_by(SensorReading.time.desc())
+        )
+        last_read = last_read_result.first()
+
+        out.append(SharedDeviceOut(
+            id=str(d.id),
+            kind=d.kind,
+            sensor_model=d.sensor_model,
+            active=d.active,
+            needs_recalibration=d.needs_recalibration,
+            last_seen_at=last_read.time if last_read else None,
+            claimed_by_username=claimer_username,
+            claimed_by_me=bool(session and session.user_id == user.id),
+            session_expires_at=session.expires_at if session else None,
+        ))
+    return out
+
+
+@router.post("/device/{device_id}/claim", response_model=ClaimResponse)
+async def claim_shared_device(
+    device_id: UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Claim a shared device for the caller. Silently ends any prior session.
+
+    All readings arriving while the session is active belong to the caller.
+    """
+    device_result = await db.exec(select(Device).where(Device.id == device_id))
+    device = device_result.first()
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+    if not device.is_shared and device.user_id != user.id:
+        raise HTTPException(status_code=403, detail="Device is not shared")
+
+    # Look up who's being displaced (for UX feedback)
+    prior = await get_active_session(device_id, db)
+    displaced_username: Optional[str] = None
+    if prior and prior.user_id != user.id:
+        prior_user_result = await db.exec(select(User).where(User.id == prior.user_id))
+        prior_user = prior_user_result.first()
+        displaced_username = prior_user.username if prior_user else None
+
+    session = await claim_session(device_id, user.id, db)
+    return ClaimResponse(
+        device_id=str(device_id),
+        session_id=str(session.id),
+        expires_at=session.expires_at,
+        displaced_username=displaced_username,
+    )
+
+
+@router.post("/device/{device_id}/release", status_code=204)
+async def release_shared_device(
+    device_id: UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """End the caller's active session on this device. No-op if none."""
+    await release_session(device_id, user.id, db)
+    return None
+
+
 # ─── Ingest sensor reading ────────────────────────────────────────────────────
 
 @router.post("/readings", response_model=SensorReadingOut, status_code=201)
@@ -191,9 +307,13 @@ async def ingest_reading(
     #                       breath_voc  = sensor_voltage (V),
     #                       acetone_delta stored in mV,
     #                       pressure_mean = pressure_kpa (kPa)
+    # Attribute to current shared-session claimer if any (else device owner).
+    reading_user_id = await resolve_reading_user(device, db)
+
     reading = SensorReading(
         time=body.time,
         device_id=body.device_id,
+        user_id=reading_user_id,
         voc_ppb=body.voc_ppb,
         ketone_mmol=body.ketone_mmol,
         temp_c=body.temp_c,

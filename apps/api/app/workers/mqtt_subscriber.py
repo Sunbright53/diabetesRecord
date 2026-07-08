@@ -24,6 +24,7 @@ from sqlmodel import select
 from app.core.config import settings
 from app.models.health import Device, SensorReading, DeviceCalibration
 from app.services import signal_processing as sp
+from app.services.device_session import resolve_reading_user
 
 logging.basicConfig(
     level=logging.INFO,
@@ -121,6 +122,9 @@ async def process_reading(device_id_str: str, payload: dict):
         confidence = r_score / 100.0
         classification = sp.classify_acetone(acetone_delta_mv, confidence)
 
+        # Attribute reading to the current session claimer, else fall back to owner.
+        reading_user_id = await resolve_reading_user(device, db)
+
         # NOTE: acetone_delta is stored in **millivolts** (voltage delta from baseline),
         #       aligned with firmware `classifyAcetone(delta_mV)` semantics.
         #       ambient_voc = baseline_voltage (V), breath_voc = sensor_voltage (V),
@@ -128,6 +132,7 @@ async def process_reading(device_id_str: str, payload: dict):
         reading = SensorReading(
             time=datetime.utcnow(),
             device_id=device_uuid,
+            user_id=reading_user_id,
             ambient_voc=baseline_voltage,
             breath_voc=sensor_voltage,
             acetone_delta=round(acetone_delta_mv, 4),
@@ -162,7 +167,7 @@ async def process_reading(device_id_str: str, payload: dict):
                 "quality_score": reading.quality_score,
                 "confidence_score": reading.confidence_score,
             })
-            await r.publish(f"readings:{device.user_id}", ws_payload)
+            await r.publish(f"readings:{reading_user_id}", ws_payload)
             await r.aclose()
         except Exception as e:
             log.debug("Redis publish failed (non-critical): %s", e)

@@ -20,6 +20,9 @@ class Device(SQLModel, table=True):
     last_calibrated_at: Optional[datetime] = None
     firmware_version: Optional[str] = Field(default=None, max_length=50)
     sensor_model: Optional[str] = Field(default="TGS1820", max_length=50)
+    # If true, any signed-in user can claim this device via /devices/pool.
+    # Readings during their session are attributed to the claimer, not user_id (owner).
+    is_shared: bool = Field(default=False)
 
 class SensorReading(SQLModel, table=True):
     """TimescaleDB hypertable — partitioned by time. Migration adds create_hypertable call.
@@ -33,6 +36,9 @@ class SensorReading(SQLModel, table=True):
 
     time: datetime = Field(primary_key=True)
     device_id: UUID = Field(foreign_key="devices.id", primary_key=True)
+    # Attribution: whose reading this is. May differ from device.user_id when
+    # a shared device is claimed by another user via a device_session.
+    user_id: Optional[UUID] = Field(default=None, foreign_key="users.id", index=True)
 
     # Legacy fields (kept for backward compat)
     voc_ppb: Optional[float] = None
@@ -177,3 +183,17 @@ class ActivityLog(SQLModel, table=True):
     kind: str = Field(max_length=50)  # walk|run|cycle|gym|yoga|...
     duration_min: int
     kcal: Optional[float] = None
+
+
+class DeviceSession(SQLModel, table=True):
+    """One active claim on a shared device. Enforced one-per-device by partial
+    unique index on (device_id) WHERE active. Claim takes over any prior
+    session silently (see /device/{id}/claim endpoint)."""
+    __tablename__ = "device_session"
+
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    device_id: UUID = Field(foreign_key="devices.id", index=True)
+    user_id: UUID = Field(foreign_key="users.id", index=True)
+    started_at: datetime = Field(default_factory=datetime.utcnow)
+    expires_at: datetime  # started_at + sliding TTL (30 min default)
+    active: bool = Field(default=True)

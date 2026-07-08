@@ -263,9 +263,12 @@ async def submit_reading(
     confidence = r_score / 100.0
     classification = sp.classify_acetone(acetone_delta, confidence)
 
+    # Admin-submitted readings are attributed to the device owner explicitly
+    # (bypasses shared-session takeover — admin picks the target via device_id).
     reading = SensorReading(
         time=body.time or datetime.utcnow(),
         device_id=device_uuid,
+        user_id=device.user_id,
         ambient_voc=body.ambient_voc, breath_voc=body.breath_voc,
         acetone_delta=round(acetone_delta, 4),
         pressure_mean=body.pressure_mean, pressure_std=body.pressure_std,

@@ -388,6 +388,26 @@ export interface DeviceOut {
   sensor_model: string | null;
 }
 
+// ─── Shared device pool (session-based multi-user access) ────
+export interface SharedDeviceOut {
+  id: string;
+  kind: string;
+  sensor_model: string | null;
+  active: boolean;
+  needs_recalibration: boolean;
+  last_seen_at: string | null;
+  claimed_by_username: string | null;
+  claimed_by_me: boolean;
+  session_expires_at: string | null;
+}
+
+export interface ClaimResponse {
+  device_id: string;
+  session_id: string;
+  expires_at: string;
+  displaced_username: string | null;
+}
+
 export interface CalibrationReportOut {
   device_id: string;
   report_generated_at: string;
@@ -586,6 +606,12 @@ export const api = {
         device_id: string; mqtt_topic: string; mqtt_user: string;
         mqtt_broker: string; mqtt_port: number; secret: string; message: string;
       }>("/sensor/device/pair", { method: "POST", body: JSON.stringify(data ?? {}) }),
+    // Shared-device pool
+    listSharedDevices: () => request<SharedDeviceOut[]>("/sensor/devices/pool"),
+    claimSharedDevice: (deviceId: string) =>
+      request<ClaimResponse>(`/sensor/device/${deviceId}/claim`, { method: "POST" }),
+    releaseSharedDevice: (deviceId: string) =>
+      request<void>(`/sensor/device/${deviceId}/release`, { method: "POST" }),
   },
   ai: {
     getTrend: (deviceId: string, days = 7) =>

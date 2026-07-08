@@ -2,11 +2,12 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { api } from "@/lib/api";
+import { api, type SharedDeviceOut } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useDeviceStream } from "@/lib/useDeviceStream";
 import Link from "next/link";
-import { ChevronRight, Settings, BarChart2, FlaskConical } from "lucide-react";
+import { ChevronRight, Settings, BarChart2, FlaskConical, Radio } from "lucide-react";
+import { toast } from "sonner";
 import { useT } from "@/lib/i18n";
 import { useQueryClient } from "@tanstack/react-query";
 import UrineKetoneLogger from "@/components/UrineKetoneLogger";
@@ -32,7 +33,24 @@ export default function BreathingPage() {
     queryFn: api.sensor.listDevices,
   });
 
-  const primaryDevice = devices?.[0];
+  // Shared-device pool — any signed-in user can claim.
+  const { data: sharedDevices, refetch: refetchPool } = useQuery({
+    queryKey: ["sensor", "shared-devices"],
+    queryFn: api.sensor.listSharedDevices,
+    refetchInterval: 15_000, // keep claimed_by / expiry fresh
+  });
+
+  const ownedDevice = devices?.[0];
+  const myClaim = sharedDevices?.find((d) => d.claimed_by_me);
+  // Effective primary: owned first, else a shared device I've claimed.
+  const primaryDevice = ownedDevice ?? (myClaim ? {
+    id: myClaim.id,
+    kind: myClaim.kind,
+    active: myClaim.active,
+    needs_recalibration: myClaim.needs_recalibration,
+    last_calibrated_at: null,
+    sensor_model: myClaim.sensor_model,
+  } : undefined);
 
   return (
     <div className="max-w-md mx-auto px-4 pt-5 pb-24 space-y-5">
@@ -41,15 +59,39 @@ export default function BreathingPage() {
         {primaryDevice ? (
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-semibold text-text-primary">{primaryDevice.sensor_model ?? "MetaBreath TGS1820"}</p>
+              <p className="text-sm font-semibold text-text-primary">
+                {primaryDevice.sensor_model ?? "MetaBreath TGS1820"}
+                {myClaim && !ownedDevice && (
+                  <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded-full bg-mint-500/20 text-mint-500 font-medium align-middle">
+                    shared
+                  </span>
+                )}
+              </p>
               <div className="flex items-center gap-1.5 mt-1">
                 <div className={`h-2 w-2 rounded-full ${connected ? "bg-mint-500 animate-pulse" : "bg-text-disabled"}`} />
                 <p className="text-xs text-text-muted">{connected ? "Connected · Live" : "Disconnected"}</p>
               </div>
             </div>
-            <Link href={`/me/device/${primaryDevice.id}/settings`} className="h-9 w-9 rounded-xl bg-bg-raised flex items-center justify-center">
-              <Settings size={16} className="text-text-muted" />
-            </Link>
+            {ownedDevice ? (
+              <Link href={`/me/device/${primaryDevice.id}/settings`} className="h-9 w-9 rounded-xl bg-bg-raised flex items-center justify-center">
+                <Settings size={16} className="text-text-muted" />
+              </Link>
+            ) : (
+              <button
+                onClick={async () => {
+                  try {
+                    await api.sensor.releaseSharedDevice(primaryDevice.id);
+                    toast.success("ปล่อยเครื่องแล้ว");
+                    refetchPool();
+                  } catch (e) {
+                    toast.error(e instanceof Error ? e.message : "ปล่อยเครื่องไม่สำเร็จ");
+                  }
+                }}
+                className="text-xs text-text-muted hover:text-text-primary px-2 py-1 rounded-lg bg-bg-raised"
+              >
+                ปล่อย
+              </button>
+            )}
           </div>
         ) : (
           <div className="flex items-center justify-between">
@@ -58,6 +100,22 @@ export default function BreathingPage() {
           </div>
         )}
       </div>
+
+      {/* Shared device pool — show only when I don't own AND haven't claimed */}
+      {!ownedDevice && !myClaim && sharedDevices && sharedDevices.length > 0 && (
+        <div className="bg-bg-elevated rounded-2xl p-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <Radio size={16} className="text-mint-500" strokeWidth={1.6} />
+            <p className="text-sm font-semibold text-text-primary">เครื่องที่ใช้ร่วมกันได้</p>
+          </div>
+          <p className="text-xs text-text-muted -mt-1">กด "ใช้เครื่องนี้" แล้วค่าจากการเป่าจะเข้าบัญชีของคุณทันที (30 นาที)</p>
+          <div className="space-y-2">
+            {sharedDevices.map((d) => (
+              <SharedDeviceCard key={d.id} device={d} onClaimed={() => refetchPool()} />
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Breath session — START button → 5-second count → result card */}
       <BreathSession
@@ -91,6 +149,61 @@ export default function BreathingPage() {
 
       {/* Recent sessions — stored locally after each breath session */}
       <RecentBreathSessions sessions={sessions} />
+    </div>
+  );
+}
+
+// ─── Shared device card ─────────────────────────────────────────────────────
+function SharedDeviceCard({
+  device,
+  onClaimed,
+}: {
+  device: SharedDeviceOut;
+  onClaimed: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const online = device.last_seen_at &&
+    (Date.now() - new Date(device.last_seen_at).getTime() < 60_000);
+
+  async function handleClaim() {
+    setBusy(true);
+    try {
+      const res = await api.sensor.claimSharedDevice(device.id);
+      if (res.displaced_username) {
+        toast.success(`ใช้เครื่องนี้ได้แล้ว (${res.displaced_username} ถูกปล่อยอัตโนมัติ)`);
+      } else {
+        toast.success("ใช้เครื่องนี้ได้แล้ว — เป่าได้เลย");
+      }
+      onClaimed();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "จองเครื่องไม่สำเร็จ");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="bg-bg-raised rounded-xl p-3 flex items-center justify-between gap-3">
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <span className={`h-2 w-2 rounded-full shrink-0 ${online ? "bg-mint-500 animate-pulse" : "bg-text-disabled"}`} />
+          <p className="text-sm font-medium text-text-primary truncate">
+            {device.sensor_model ?? device.kind}
+          </p>
+        </div>
+        <p className="text-[11px] text-text-muted mt-0.5">
+          {device.claimed_by_username
+            ? <>กำลังใช้: <span className="font-medium">{device.claimed_by_username}</span></>
+            : "ว่าง — ยังไม่มีใครใช้"}
+        </p>
+      </div>
+      <button
+        onClick={handleClaim}
+        disabled={busy}
+        className="text-xs font-medium px-3 py-2 rounded-lg bg-mint-500 text-black hover:bg-mint-400 transition disabled:opacity-50 shrink-0"
+      >
+        {busy ? "..." : "ใช้เครื่องนี้"}
+      </button>
     </div>
   );
 }
