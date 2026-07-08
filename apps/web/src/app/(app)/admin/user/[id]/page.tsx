@@ -55,6 +55,96 @@ function LabelBadge({ label }: { label: string | null }) {
   );
 }
 
+function fmt(v: number | null | undefined, digits = 2, unit = ""): string {
+  if (v === null || v === undefined) return "—";
+  return `${v.toFixed(digits)}${unit ? ` ${unit}` : ""}`;
+}
+
+function Field({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="flex flex-col gap-0.5">
+      <span className="text-[10px] uppercase tracking-wide text-gray-400">{label}</span>
+      <span className="text-xs font-mono text-gray-800 break-all">{value}</span>
+    </div>
+  );
+}
+
+function RecentRow({ r }: { r: DashboardReading }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <tr
+        onClick={() => setOpen((v) => !v)}
+        className="border-b border-gray-50 hover:bg-gray-50 cursor-pointer"
+      >
+        <td className="px-2 py-2 text-gray-400 text-center">
+          <svg
+            className={`w-3 h-3 inline-block transition-transform ${open ? "rotate-90" : ""}`}
+            fill="none" stroke="currentColor" viewBox="0 0 24 24"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
+          </svg>
+        </td>
+        <td className="px-3 py-2 text-xs text-gray-600 whitespace-nowrap">
+          {new Date(r.time).toLocaleString("th-TH", { dateStyle: "short", timeStyle: "short" })}
+        </td>
+        <td className="px-3 py-2 text-right font-mono text-xs text-gray-800">{fmt(r.acetone_delta)}</td>
+        <td className="px-3 py-2 text-right font-mono text-xs text-gray-600">{fmt(r.pressure_mean)}</td>
+        <td className="px-3 py-2 text-right font-mono text-xs text-gray-600">
+          {r.temp_c !== null && r.humidity_pct !== null
+            ? `${r.temp_c.toFixed(0)}°/${r.humidity_pct.toFixed(0)}%`
+            : "—"}
+        </td>
+        <td className="px-3 py-2 text-right font-mono text-xs text-gray-600">
+          {r.quality_score !== null ? r.quality_score.toFixed(0) : "—"}
+        </td>
+        <td className="px-5 py-2 text-right">
+          <LabelBadge label={r.label} />
+        </td>
+      </tr>
+      {open && (
+        <tr className="bg-slate-50 border-b border-gray-100">
+          <td />
+          <td colSpan={6} className="px-3 py-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-x-4 gap-y-3">
+              <Field label="Ambient VOC" value={fmt(r.ambient_voc, 3, "ppm")} />
+              <Field label="Breath VOC"  value={fmt(r.breath_voc,  3, "ppm")} />
+              <Field label="Acetone Δ"   value={fmt(r.acetone_delta, 3, "ppm")} />
+              <Field label="VOC ppb"     value={fmt(r.voc_ppb, 1)} />
+              <Field label="Ketone"      value={fmt(r.ketone_mmol, 2, "mmol/L")} />
+              <Field label="Temp"        value={fmt(r.temp_c, 1, "°C")} />
+              <Field label="Humidity"    value={fmt(r.humidity_pct, 1, "%")} />
+              <Field label="Pressure μ"  value={fmt(r.pressure_mean, 2)} />
+              <Field label="Pressure σ"  value={fmt(r.pressure_std,  2)} />
+              <Field label="Breath dur." value={fmt(r.breath_duration, 2, "s")} />
+              <Field label="Quality"     value={fmt(r.quality_score, 1)} />
+              <Field label="Reliability" value={fmt(r.reliability_score, 1)} />
+              <Field label="Env. penalty" value={fmt(r.environment_penalty, 2)} />
+              <Field label="Slope"       value={fmt(r.slope, 3)} />
+              <Field label="Time-to-peak" value={fmt(r.time_to_peak, 2, "s")} />
+              <Field label="Recovery"    value={fmt(r.recovery_rate, 3)} />
+              <Field label="MRI"         value={r.metabolic_risk_index ?? "—"} />
+              <Field label="Confidence"  value={fmt(r.confidence_score, 2)} />
+              <Field label="Device"      value={<span className="text-[10px]">{r.device_id}</span>} />
+              <Field label="Label"       value={r.label ?? "—"} />
+            </div>
+            {r.raw && Object.keys(r.raw).length > 0 && (
+              <details className="mt-4">
+                <summary className="text-[11px] uppercase tracking-wide text-gray-400 cursor-pointer hover:text-gray-600">
+                  Raw payload (JSON)
+                </summary>
+                <pre className="mt-2 bg-white border border-gray-200 rounded-lg p-3 text-[11px] font-mono text-gray-700 overflow-x-auto">
+{JSON.stringify(r.raw, null, 2)}
+                </pre>
+              </details>
+            )}
+          </td>
+        </tr>
+      )}
+    </>
+  );
+}
+
 function KpiCard({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
     <div className="bg-white rounded-2xl border border-gray-100 p-5">
@@ -372,9 +462,10 @@ export default function UserDashboardPage() {
 
         {/* Recent readings */}
         <section className="bg-white rounded-2xl border border-gray-100 p-5">
-          <h2 className="font-semibold text-gray-900 text-sm mb-4">
+          <h2 className="font-semibold text-gray-900 text-sm mb-1">
             บันทึกล่าสุด (20 รายการ)
           </h2>
+          <p className="text-xs text-gray-400 mb-4">คลิกที่แถวเพื่อดูรายละเอียดทุกฟิลด์</p>
           {loading || !data ? (
             <div className="space-y-1.5">
               {[1, 2, 3, 4, 5].map((i) => (
@@ -388,7 +479,8 @@ export default function UserDashboardPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-xs text-gray-400 border-b border-gray-100">
-                    <th className="text-left font-medium px-5 py-2">เวลา</th>
+                    <th className="w-6 px-2 py-2" />
+                    <th className="text-left font-medium px-3 py-2">เวลา</th>
                     <th className="text-right font-medium px-3 py-2">Acetone Δ</th>
                     <th className="text-right font-medium px-3 py-2">Pressure</th>
                     <th className="text-right font-medium px-3 py-2">Temp/Hum</th>
@@ -398,28 +490,7 @@ export default function UserDashboardPage() {
                 </thead>
                 <tbody>
                   {data.recent.map((r, idx) => (
-                    <tr key={`${r.time}-${idx}`} className="border-b border-gray-50 last:border-b-0 hover:bg-gray-50">
-                      <td className="px-5 py-2 text-xs text-gray-600">
-                        {new Date(r.time).toLocaleString("th-TH", { dateStyle: "short", timeStyle: "short" })}
-                      </td>
-                      <td className="px-3 py-2 text-right font-mono text-xs text-gray-800">
-                        {r.acetone_delta !== null ? r.acetone_delta.toFixed(2) : "—"}
-                      </td>
-                      <td className="px-3 py-2 text-right font-mono text-xs text-gray-600">
-                        {r.pressure_mean !== null ? `${r.pressure_mean.toFixed(2)}` : "—"}
-                      </td>
-                      <td className="px-3 py-2 text-right font-mono text-xs text-gray-600">
-                        {r.temp_c !== null && r.humidity_pct !== null
-                          ? `${r.temp_c.toFixed(0)}°/${r.humidity_pct.toFixed(0)}%`
-                          : "—"}
-                      </td>
-                      <td className="px-3 py-2 text-right font-mono text-xs text-gray-600">
-                        {r.quality_score !== null ? `${r.quality_score.toFixed(0)}` : "—"}
-                      </td>
-                      <td className="px-5 py-2 text-right">
-                        <LabelBadge label={r.label} />
-                      </td>
-                    </tr>
+                    <RecentRow key={`${r.time}-${idx}`} r={r} />
                   ))}
                 </tbody>
               </table>

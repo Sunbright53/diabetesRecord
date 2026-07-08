@@ -301,15 +301,31 @@ class DashboardDevice(BaseModel):
 class DashboardReading(BaseModel):
     time: datetime
     device_id: str
-    acetone_delta: Optional[float]
-    quality_score: Optional[float]
-    reliability_score: Optional[float]
-    temp_c: Optional[float]
-    humidity_pct: Optional[float]
-    pressure_mean: Optional[float]
-    label: Optional[str]
-    metabolic_risk_index: Optional[int]
-    confidence_score: Optional[float]
+    # Core acetone / VOC
+    ambient_voc: Optional[float] = None
+    breath_voc: Optional[float] = None
+    acetone_delta: Optional[float] = None
+    voc_ppb: Optional[float] = None
+    ketone_mmol: Optional[float] = None
+    # Environment
+    temp_c: Optional[float] = None
+    humidity_pct: Optional[float] = None
+    pressure_mean: Optional[float] = None
+    pressure_std: Optional[float] = None
+    breath_duration: Optional[float] = None
+    # Quality / signal shape
+    quality_score: Optional[float] = None
+    reliability_score: Optional[float] = None
+    environment_penalty: Optional[float] = None
+    slope: Optional[float] = None
+    time_to_peak: Optional[float] = None
+    recovery_rate: Optional[float] = None
+    # Classification
+    label: Optional[str] = None
+    metabolic_risk_index: Optional[int] = None
+    confidence_score: Optional[float] = None
+    # Raw payload (kept small — used for debug view only)
+    raw: Optional[dict] = None
 
 
 class DashboardKPI(BaseModel):
@@ -451,40 +467,36 @@ async def user_dashboard(
         lbl = r.label or "unknown"
         label_counts[lbl] = label_counts.get(lbl, 0) + 1
 
-    # ── Downsample series → ≤ 200 points ─────────────────────────────────────
+    def _to_dashboard_reading(r: SensorReading, include_raw: bool) -> DashboardReading:
+        return DashboardReading(
+            time=r.time, device_id=str(r.device_id),
+            ambient_voc=r.ambient_voc, breath_voc=r.breath_voc,
+            acetone_delta=r.acetone_delta, voc_ppb=r.voc_ppb, ketone_mmol=r.ketone_mmol,
+            temp_c=r.temp_c, humidity_pct=r.humidity_pct,
+            pressure_mean=r.pressure_mean, pressure_std=r.pressure_std,
+            breath_duration=r.breath_duration,
+            quality_score=r.quality_score, reliability_score=r.reliability_score,
+            environment_penalty=r.environment_penalty,
+            slope=r.slope, time_to_peak=r.time_to_peak, recovery_rate=r.recovery_rate,
+            label=r.label, metabolic_risk_index=r.metabolic_risk_index,
+            confidence_score=r.confidence_score,
+            raw=r.raw if include_raw else None,
+        )
+
+    # ── Downsample series → ≤ 200 points (skip raw JSON to keep payload lean) ─
     MAX_POINTS = 200
     stride = max(1, len(readings) // MAX_POINTS)
     sampled = readings[::stride][:MAX_POINTS]
-    series = [
-        DashboardReading(
-            time=r.time, device_id=str(r.device_id),
-            acetone_delta=r.acetone_delta, quality_score=r.quality_score,
-            reliability_score=r.reliability_score,
-            temp_c=r.temp_c, humidity_pct=r.humidity_pct, pressure_mean=r.pressure_mean,
-            label=r.label, metabolic_risk_index=r.metabolic_risk_index,
-            confidence_score=r.confidence_score,
-        )
-        for r in sampled
-    ]
+    series = [_to_dashboard_reading(r, include_raw=False) for r in sampled]
 
-    # ── Recent 20 raw ────────────────────────────────────────────────────────
+    # ── Recent 20 raw (full detail, incl. raw JSONB for expand-row view) ─────
     recent_result = await db.exec(
         select(SensorReading)
         .where(SensorReading.device_id.in_(device_ids))
         .order_by(SensorReading.time.desc())
     )
     recent_all = list(recent_result.all())[:20]
-    recent = [
-        DashboardReading(
-            time=r.time, device_id=str(r.device_id),
-            acetone_delta=r.acetone_delta, quality_score=r.quality_score,
-            reliability_score=r.reliability_score,
-            temp_c=r.temp_c, humidity_pct=r.humidity_pct, pressure_mean=r.pressure_mean,
-            label=r.label, metabolic_risk_index=r.metabolic_risk_index,
-            confidence_score=r.confidence_score,
-        )
-        for r in recent_all
-    ]
+    recent = [_to_dashboard_reading(r, include_raw=True) for r in recent_all]
 
     # ── Ketone logs (last 30 days) ───────────────────────────────────────────
     ket_result = await db.exec(

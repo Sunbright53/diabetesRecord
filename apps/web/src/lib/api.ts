@@ -292,15 +292,31 @@ export interface DashboardDevice {
 export interface DashboardReading {
   time: string;
   device_id: string;
+  // Core acetone / VOC
+  ambient_voc: number | null;
+  breath_voc: number | null;
   acetone_delta: number | null;
-  quality_score: number | null;
-  reliability_score: number | null;
+  voc_ppb: number | null;
+  ketone_mmol: number | null;
+  // Environment
   temp_c: number | null;
   humidity_pct: number | null;
   pressure_mean: number | null;
+  pressure_std: number | null;
+  breath_duration: number | null;
+  // Quality / signal shape
+  quality_score: number | null;
+  reliability_score: number | null;
+  environment_penalty: number | null;
+  slope: number | null;
+  time_to_peak: number | null;
+  recovery_rate: number | null;
+  // Classification
   label: string | null;
   metabolic_risk_index: number | null;
   confidence_score: number | null;
+  // Raw payload (only present on `recent`, not `series`)
+  raw: Record<string, unknown> | null;
 }
 
 export interface DashboardKPI {

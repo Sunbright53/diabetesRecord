@@ -130,22 +130,27 @@ function PasswordGate({ onUnlock }: { onUnlock: (pw: string) => void }) {
 function UserCard({
   user,
   onSelect,
+  onOpen,
   selected,
 }: {
   user: AdminUserOut;
   onSelect: () => void;
+  onOpen: () => void;
   selected: boolean;
 }) {
   const s: AdminReadingSummary = user.reading_summary;
   const hasReadings = s.total_readings > 0;
 
   return (
-    <button
-      onClick={onSelect}
-      className={`w-full text-left rounded-2xl border transition-all duration-200 overflow-hidden ${
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(); } }}
+      className={`w-full text-left rounded-2xl border transition-all duration-200 overflow-hidden cursor-pointer ${
         selected
           ? "border-slate-700 bg-slate-900 shadow-lg ring-1 ring-slate-700"
-          : "border-gray-100 bg-white hover:border-gray-200 hover:shadow-md"
+          : "border-gray-100 bg-white hover:border-slate-300 hover:shadow-md"
       }`}
     >
       {/* Header */}
@@ -192,13 +197,36 @@ function UserCard({
         </div>
       </div>
 
-      {hasReadings && s.last_reading_at && (
-        <div className={`px-5 py-2 flex items-center justify-between text-xs ${selected ? "text-slate-500 border-t border-slate-700/50" : "text-gray-400 border-t border-gray-100"}`}>
-          <span>บันทึกล่าสุด</span>
-          <span>{new Date(s.last_reading_at).toLocaleString("th-TH", { dateStyle: "short", timeStyle: "short" })}</span>
+      {/* Footer — last reading time + action bar */}
+      <div className={`px-5 py-2.5 flex items-center justify-between text-xs gap-3 ${
+        selected ? "border-t border-slate-700/50" : "border-t border-gray-100"
+      }`}>
+        <span className={selected ? "text-slate-500" : "text-gray-400"}>
+          {hasReadings && s.last_reading_at
+            ? new Date(s.last_reading_at).toLocaleString("th-TH", { dateStyle: "short", timeStyle: "short" })
+            : "ยังไม่มีบันทึก"}
+        </span>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onSelect(); }}
+            className={`px-2.5 py-1 rounded-md text-xs font-medium transition ${
+              selected
+                ? "bg-white/10 text-white hover:bg-white/20"
+                : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+            }`}
+          >
+            + กรอกข้อมูล
+          </button>
+          <span className={`inline-flex items-center gap-1 font-medium ${selected ? "text-slate-300" : "text-slate-700"}`}>
+            ดูแดชบอร์ด
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
+            </svg>
+          </span>
         </div>
-      )}
-    </button>
+      </div>
+    </div>
   );
 }
 
@@ -541,6 +569,7 @@ export default function AdminPage() {
                     user={u}
                     selected={selectedUser?.id === u.id}
                     onSelect={() => setSelectedUser(u.id === selectedUser?.id ? null : u)}
+                    onOpen={() => router.push(`/admin/user/${u.id}`)}
                   />
                 ))}
               </div>
