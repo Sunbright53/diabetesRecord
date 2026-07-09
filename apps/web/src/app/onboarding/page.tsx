@@ -7,6 +7,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DobPicker } from "@/components/ui/dob-picker";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useT } from "@/lib/i18n";
@@ -29,11 +30,11 @@ const GOAL_ICON: Record<string, LucideIcon> = {
 export default function OnboardingPage() {
   const router = useRouter();
   const { user, refreshUser } = useAuth();
-  const { t } = useT();
+  const { t, locale } = useT();
   const [step, setStep] = useState(0);
   const [saving, setSaving] = useState(false);
 
-  const { register, handleSubmit, formState: { errors } } = useForm<BodyData>({
+  const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm<BodyData>({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     resolver: zodResolver(bodySchema) as any,
   });
@@ -171,10 +172,11 @@ export default function OnboardingPage() {
                   {...register("weight_kg")}
                 />
               </div>
-              <Input
+              <DobPicker
                 label={t("onboarding.dob")}
-                type="date"
-                {...register("dob")}
+                value={watch("dob")}
+                onChange={(val) => setValue("dob", val)}
+                locale={locale as "en" | "th"}
               />
               <div className="space-y-2">
                 <p className="text-sm font-semibold text-gray-900">{t("onboarding.sex")}</p>
