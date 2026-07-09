@@ -12,7 +12,7 @@ import { useAuth } from "@/lib/auth";
 import { useT } from "@/lib/i18n";
 import { twMerge } from "tailwind-merge";
 import { BrandMark } from "@/components/brand/logo";
-import { Leaf, Clock, Dumbbell, LineChart, Bell, type LucideIcon } from "lucide-react";
+import { Leaf, Clock, Dumbbell, LineChart, Bell, User, type LucideIcon } from "lucide-react";
 
 const bodySchema = z.object({
   height_cm: z.coerce.number().min(100).max(250).optional(),
@@ -141,48 +141,58 @@ export default function OnboardingPage() {
 
         {/* Step 1: Body metrics */}
         {step === 1 && (
-          <div className="rounded-2xl bg-white border border-border-soft shadow-[0_1px_2px_rgba(20,20,20,0.03)] p-6 space-y-4">
-            <h2 className="text-lg font-semibold text-charcoal-500 tracking-tight">{t("onboarding.bodyTitle")}</h2>
-            <p className="text-sm text-muted">{t("onboarding.bodyHint")}</p>
-
-            <div className="grid grid-cols-2 gap-3">
-              <Input
-                label={t("onboarding.height")}
-                type="number"
-                placeholder="170"
-                error={errors.height_cm?.message}
-                {...register("height_cm")}
-              />
-              <Input
-                label={t("onboarding.weight")}
-                type="number"
-                step="0.1"
-                placeholder="65"
-                error={errors.weight_kg?.message}
-                {...register("weight_kg")}
-              />
-            </div>
-            <Input
-              label={t("onboarding.dob")}
-              type="date"
-              {...register("dob")}
-            />
-            <div className="space-y-1">
-              <p className="text-sm font-medium text-charcoal-500/80">{t("onboarding.sex")}</p>
-              <div className="flex gap-2">
-                {(["male","female","other"] as const).map((s) => (
-                  <label
-                    key={s}
-                    className="flex flex-1 cursor-pointer items-center justify-center rounded-xl border border-border-soft py-2 text-sm has-[:checked]:border-mint-500 has-[:checked]:bg-mint-50/50 has-[:checked]:text-mint-700"
-                  >
-                    <input type="radio" value={s} className="sr-only" {...register("sex")} />
-                    {t(`onboarding.${s}`)}
-                  </label>
-                ))}
+          <div className="rounded-2xl bg-white border border-border-soft shadow-[0_4px_20px_rgba(20,20,20,0.06)] p-6 space-y-5">
+            {/* Header */}
+            <div className="text-center space-y-3">
+              <div className="inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-mint-50 to-mint-100/60 border border-mint-200/60 shadow-[0_4px_12px_rgba(72,199,140,0.12)]">
+                <User size={28} className="text-mint-600" strokeWidth={1.4} />
+              </div>
+              <div>
+                <h2 className="text-xl font-bold text-gray-900 tracking-tight">{t("onboarding.bodyTitle")}</h2>
+                <p className="text-sm text-gray-500 mt-1">{t("onboarding.bodyHint")}</p>
               </div>
             </div>
 
-            <div className="flex gap-2 pt-2">
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <Input
+                  label={t("onboarding.height")}
+                  type="number"
+                  placeholder="170"
+                  error={errors.height_cm?.message}
+                  {...register("height_cm")}
+                />
+                <Input
+                  label={t("onboarding.weight")}
+                  type="number"
+                  step="0.1"
+                  placeholder="65"
+                  error={errors.weight_kg?.message}
+                  {...register("weight_kg")}
+                />
+              </div>
+              <Input
+                label={t("onboarding.dob")}
+                type="date"
+                {...register("dob")}
+              />
+              <div className="space-y-2">
+                <p className="text-sm font-semibold text-gray-900">{t("onboarding.sex")}</p>
+                <div className="grid grid-cols-3 gap-2">
+                  {(["male","female","other"] as const).map((s) => (
+                    <label
+                      key={s}
+                      className="flex cursor-pointer items-center justify-center rounded-xl border-2 border-gray-200 py-2.5 text-sm font-medium text-gray-700 transition-colors has-[:checked]:border-mint-500 has-[:checked]:bg-mint-50 has-[:checked]:text-mint-700"
+                    >
+                      <input type="radio" value={s} className="sr-only" {...register("sex")} />
+                      {t(`onboarding.${s}`)}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-2">
               <Button variant="ghost" size="lg" className="flex-1" onClick={() => setStep(0)}>
                 {t("common.back")}
               </Button>
