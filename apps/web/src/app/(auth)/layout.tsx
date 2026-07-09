@@ -5,6 +5,7 @@ import { useT } from "@/lib/i18n";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { BrandMark } from "@/components/brand/logo";
+import { LangSwitcher } from "@/components/lang-switcher";
 
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -29,6 +30,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-surface p-4">
+      <LangSwitcher />
       <div className="w-full max-w-md">
         {/* Logo */}
         <div className="mb-8 text-center">

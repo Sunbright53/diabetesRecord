@@ -22,11 +22,11 @@ const GOALS: { value: string; Icon: LucideIcon }[] = [
 ];
 
 const schema = z.object({
-  username:     z.string().min(3).max(30).regex(/^[a-z0-9_]+$/),
+  username:     z.string().min(3).max(30).regex(/^[a-zA-Z0-9_]+$/),
   email:        z.string().email(),
   password:     z.string().min(8),
   display_name: z.string().min(1),
-  goal_type:    z.string().min(1),
+  goal_types:   z.array(z.string()).min(1),
 });
 type FormData = z.infer<typeof schema>;
 
@@ -44,15 +44,29 @@ export default function RegisterPage() {
     formState: { errors, isSubmitting },
   } = useForm<FormData>({
     resolver: zodResolver(schema),
-    defaultValues: { goal_type: "" },
+    defaultValues: { goal_types: [] },
   });
 
-  const selectedGoal = watch("goal_type");
+  const selectedGoals = watch("goal_types");
+
+  const toggleGoal = (value: string) => {
+    const current = selectedGoals ?? [];
+    const next = current.includes(value)
+      ? current.filter((g) => g !== value)
+      : [...current, value];
+    setValue("goal_types", next, { shouldValidate: true });
+  };
 
   const onSubmit = async (data: FormData) => {
     setError("");
     try {
-      await authRegister(data);
+      await authRegister({
+        username:     data.username,
+        email:        data.email,
+        password:     data.password,
+        display_name: data.display_name,
+        goal_type:    data.goal_types[0],
+      });
       router.replace("/onboarding");
     } catch (e) {
       setError(e instanceof Error ? e.message : t("auth.registerFailed"));
@@ -69,7 +83,7 @@ export default function RegisterPage() {
       case "email":         return t("auth.err.emailInvalid");
       case "password":      return t("auth.err.passwordMin");
       case "display_name":  return t("auth.err.displayNameRequired");
-      case "goal_type":     return t("auth.err.goalRequired");
+      case "goal_types":    return t("auth.err.goalRequired");
       default:              return undefined;
     }
   };
@@ -120,12 +134,12 @@ export default function RegisterPage() {
               {GOALS.map(({ value, Icon }) => {
                 const label = t(`goal.${value}`);
                 const desc = t(`goal.${value}Desc`);
-                const active = selectedGoal === value;
+                const active = (selectedGoals ?? []).includes(value);
                 return (
                   <button
                     key={value}
                     type="button"
-                    onClick={() => setValue("goal_type", value, { shouldValidate: true })}
+                    onClick={() => toggleGoal(value)}
                     className={twMerge(
                       "rounded-xl border p-3 text-left transition-all",
                       active
@@ -140,7 +154,7 @@ export default function RegisterPage() {
                 );
               })}
             </div>
-            {errors.goal_type && (
+            {errors.goal_types && (
               <p className="text-xs text-red-500">{t("auth.err.goalRequired")}</p>
             )}
           </div>

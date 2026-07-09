@@ -14,8 +14,8 @@ class RegisterRequest(BaseModel):
     @field_validator("username")
     @classmethod
     def username_valid(cls, v: str) -> str:
-        v = v.strip().lower()
-        if not re.match(r"^[a-z0-9_]{3,30}$", v):
+        v = v.strip()
+        if not re.match(r"^[a-zA-Z0-9_]{3,30}$", v):
             raise ValueError("username: 3-30 chars, letters/numbers/underscore only")
         return v
 
