@@ -12,7 +12,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { useAuth } from "@/lib/auth";
 import { useT } from "@/lib/i18n";
 import { twMerge } from "tailwind-merge";
-import { Leaf, Clock, Dumbbell, LineChart, type LucideIcon } from "lucide-react";
+import { Leaf, Clock, Dumbbell, LineChart, Eye, EyeOff, type LucideIcon } from "lucide-react";
 
 const GOALS: { value: string; Icon: LucideIcon }[] = [
   { value: "keto",     Icon: Leaf },
@@ -22,11 +22,15 @@ const GOALS: { value: string; Icon: LucideIcon }[] = [
 ];
 
 const schema = z.object({
-  username:     z.string().min(3).max(30).regex(/^[a-zA-Z0-9_]+$/),
-  email:        z.string().email(),
-  password:     z.string().min(8),
-  display_name: z.string().min(1),
-  goal_types:   z.array(z.string()).min(1),
+  username:         z.string().min(3).max(30).regex(/^[a-zA-Z0-9_]+$/),
+  email:            z.string().email(),
+  password:         z.string().min(8),
+  confirm_password: z.string().min(1),
+  display_name:     z.string().min(1),
+  goal_types:       z.array(z.string()).min(1),
+}).refine((d) => d.password === d.confirm_password, {
+  path: ["confirm_password"],
+  message: "mismatch",
 });
 type FormData = z.infer<typeof schema>;
 
@@ -35,6 +39,8 @@ export default function RegisterPage() {
   const router = useRouter();
   const { t } = useT();
   const [error, setError] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
 
   const {
     register,
@@ -80,13 +86,29 @@ export default function RegisterPage() {
         return errors.username?.type === "too_small"
           ? t("auth.err.usernameMin")
           : t("auth.err.usernamePattern");
-      case "email":         return t("auth.err.emailInvalid");
-      case "password":      return t("auth.err.passwordMin");
-      case "display_name":  return t("auth.err.displayNameRequired");
-      case "goal_types":    return t("auth.err.goalRequired");
-      default:              return undefined;
+      case "email":            return t("auth.err.emailInvalid");
+      case "password":         return t("auth.err.passwordMin");
+      case "confirm_password":
+        return errors.confirm_password?.type === "too_small"
+          ? t("auth.err.confirmRequired")
+          : t("auth.err.passwordMismatch");
+      case "display_name":     return t("auth.err.displayNameRequired");
+      case "goal_types":       return t("auth.err.goalRequired");
+      default:                 return undefined;
     }
   };
+
+  const eyeBtn = (visible: boolean, toggle: () => void) => (
+    <button
+      type="button"
+      tabIndex={-1}
+      onClick={toggle}
+      className="text-gray-400 hover:text-gray-600 transition-colors"
+      aria-label={visible ? "Hide password" : "Show password"}
+    >
+      {visible ? <EyeOff size={16} /> : <Eye size={16} />}
+    </button>
+  );
 
   return (
     <Card>
@@ -94,18 +116,20 @@ export default function RegisterPage() {
         <h2 className="text-xl font-semibold text-gray-900 mb-1 tracking-tight">{t("auth.registerTitle")}</h2>
         <p className="text-sm text-muted mb-6">{t("auth.registerWelcome")}</p>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
           <div className="grid grid-cols-2 gap-3">
             <Input
               label={t("auth.username")}
               placeholder="john_doe"
               autoComplete="username"
+              required
               error={fieldErr("username")}
               {...register("username")}
             />
             <Input
               label={t("auth.displayName")}
               placeholder="John"
+              required
               error={fieldErr("display_name")}
               {...register("display_name")}
             />
@@ -115,22 +139,35 @@ export default function RegisterPage() {
             type="email"
             placeholder="john@example.com"
             autoComplete="email"
+            required
             error={fieldErr("email")}
             {...register("email")}
           />
           <Input
             label={t("auth.password")}
-            type="password"
+            type={showPassword ? "text" : "password"}
             placeholder={t("auth.passwordHint")}
             autoComplete="new-password"
+            required
             error={fieldErr("password")}
+            rightElement={eyeBtn(showPassword, () => setShowPassword((v) => !v))}
             {...register("password")}
           />
+          <Input
+            label={t("auth.passwordConfirmHint")}
+            type={showConfirm ? "text" : "password"}
+            placeholder={t("auth.passwordConfirmHint")}
+            autoComplete="new-password"
+            required
+            error={fieldErr("confirm_password")}
+            rightElement={eyeBtn(showConfirm, () => setShowConfirm((v) => !v))}
+            {...register("confirm_password")}
+          />
 
-          {/* Goal type */}
+          {/* Goal selector */}
           <div className="space-y-2">
             <p className="text-sm font-medium text-gray-900/80">{t("auth.goalPrompt")}</p>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-2 gap-2" role="group" aria-label={t("auth.goalPrompt")}>
               {GOALS.map(({ value, Icon }) => {
                 const label = t(`goal.${value}`);
                 const desc = t(`goal.${value}Desc`);
@@ -139,6 +176,7 @@ export default function RegisterPage() {
                   <button
                     key={value}
                     type="button"
+                    aria-pressed={active}
                     onClick={() => toggleGoal(value)}
                     className={twMerge(
                       "rounded-xl border p-3 text-left transition-all",
@@ -158,6 +196,14 @@ export default function RegisterPage() {
               <p className="text-xs text-red-500">{t("auth.err.goalRequired")}</p>
             )}
           </div>
+
+          {/* Terms */}
+          <p className="text-xs text-muted text-center leading-relaxed">
+            {t("auth.agreePrefix")}{" "}
+            <a href="#" className="text-mint-600 hover:underline">{t("auth.terms")}</a>
+            {" "}{t("auth.termsAnd")}{" "}
+            <a href="#" className="text-mint-600 hover:underline">{t("auth.privacy")}</a>
+          </p>
 
           {error && (
             <div className="rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-600">
