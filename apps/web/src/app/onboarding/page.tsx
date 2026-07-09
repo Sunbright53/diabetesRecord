@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -40,6 +40,17 @@ export default function OnboardingPage() {
 
   const goal = user?.profile?.goal_type ?? "monitor";
   const GoalIcon = GOAL_ICON[goal] ?? LineChart;
+
+  const [displayGoals, setDisplayGoals] = useState<string[]>([]);
+  useEffect(() => {
+    try {
+      const stored = sessionStorage.getItem("signup_goals");
+      const parsed: string[] = stored ? JSON.parse(stored) : [];
+      setDisplayGoals(parsed.length > 0 ? parsed : [goal]);
+    } catch {
+      setDisplayGoals([goal]);
+    }
+  }, [goal]);
 
   const steps = [t("onboarding.steps.goal"), t("onboarding.steps.body"), t("onboarding.steps.schedule")];
 
@@ -104,6 +115,22 @@ export default function OnboardingPage() {
                   {t("onboarding.tagline")}
                 </h2>
               </div>
+            </div>
+
+            {/* Selected goals chips */}
+            <div className="flex flex-wrap gap-2 justify-center">
+              {displayGoals.map((g) => {
+                const Icon = GOAL_ICON[g] ?? LineChart;
+                return (
+                  <div
+                    key={g}
+                    className="flex items-center gap-1.5 rounded-full bg-mint-50 border border-mint-200/70 px-3 py-1.5"
+                  >
+                    <Icon size={13} className="text-mint-600" strokeWidth={1.8} />
+                    <span className="text-xs font-semibold text-mint-700">{t(`goal.${g}`)}</span>
+                  </div>
+                );
+              })}
             </div>
 
             <Button size="lg" className="w-full" onClick={() => setStep(1)}>

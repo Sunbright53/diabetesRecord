@@ -9,8 +9,11 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
+import { Dialog } from "@/components/ui/dialog";
 import { useAuth } from "@/lib/auth";
 import { useT } from "@/lib/i18n";
+import { th } from "@/i18n/locales/th";
+import { en } from "@/i18n/locales/en";
 import { twMerge } from "tailwind-merge";
 import { Leaf, Clock, Dumbbell, LineChart, Eye, EyeOff, type LucideIcon } from "lucide-react";
 
@@ -34,13 +37,17 @@ const schema = z.object({
 });
 type FormData = z.infer<typeof schema>;
 
+type LegalModal = "terms" | "privacy" | null;
+
 export default function RegisterPage() {
   const { register: authRegister } = useAuth();
   const router = useRouter();
-  const { t } = useT();
+  const { t, locale } = useT();
+  const dict = locale === "th" ? th : en;
   const [error, setError] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
+  const [legalModal, setLegalModal] = useState<LegalModal>(null);
 
   const {
     register,
@@ -73,6 +80,7 @@ export default function RegisterPage() {
         display_name: data.display_name,
         goal_type:    data.goal_types[0],
       });
+      sessionStorage.setItem("signup_goals", JSON.stringify(data.goal_types));
       router.replace("/onboarding");
     } catch (e) {
       setError(e instanceof Error ? e.message : t("auth.registerFailed"));
@@ -200,9 +208,21 @@ export default function RegisterPage() {
           {/* Terms */}
           <p className="text-xs text-muted text-center leading-relaxed">
             {t("auth.agreePrefix")}{" "}
-            <a href="#" className="text-mint-600 hover:underline">{t("auth.terms")}</a>
+            <button
+              type="button"
+              onClick={() => setLegalModal("terms")}
+              className="text-mint-600 hover:underline"
+            >
+              {t("auth.terms")}
+            </button>
             {" "}{t("auth.termsAnd")}{" "}
-            <a href="#" className="text-mint-600 hover:underline">{t("auth.privacy")}</a>
+            <button
+              type="button"
+              onClick={() => setLegalModal("privacy")}
+              className="text-mint-600 hover:underline"
+            >
+              {t("auth.privacy")}
+            </button>
           </p>
 
           {error && (
@@ -223,6 +243,26 @@ export default function RegisterPage() {
           </Link>
         </p>
       </CardContent>
+
+      <Dialog
+        open={legalModal === "terms"}
+        onClose={() => setLegalModal(null)}
+        title={dict.auth.termsTitle}
+      >
+        {dict.auth.termsContent.map((para, i) => (
+          <p key={i}>{para}</p>
+        ))}
+      </Dialog>
+
+      <Dialog
+        open={legalModal === "privacy"}
+        onClose={() => setLegalModal(null)}
+        title={dict.auth.privacyTitle}
+      >
+        {dict.auth.privacyContent.map((para, i) => (
+          <p key={i}>{para}</p>
+        ))}
+      </Dialog>
     </Card>
   );
 }
