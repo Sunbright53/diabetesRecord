@@ -100,27 +100,9 @@ export default function OnboardingPage() {
                 <span className="absolute -top-1 -right-1 text-base">✨</span>
               </div>
               <div>
-                <h2 className="text-xl font-bold text-charcoal-500 tracking-tight leading-snug">
+                <h2 className="text-xl font-bold text-gray-900 tracking-tight leading-snug">
                   {t("onboarding.tagline")}
                 </h2>
-                <p className="text-sm text-muted mt-1.5 leading-relaxed">
-                  {t("onboarding.motivation")}
-                </p>
-              </div>
-            </div>
-
-            {/* Selected goal pill */}
-            <div className="flex items-center gap-3 rounded-xl bg-gradient-to-r from-mint-50 to-mint-100/40 border border-mint-200/60 px-4 py-3.5">
-              <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-white border border-mint-200/50 shadow-[0_1px_4px_rgba(72,199,140,0.12)]">
-                <GoalIcon size={18} className="text-mint-600" strokeWidth={1.6} />
-              </div>
-              <div className="min-w-0">
-                <p className="text-[10px] font-semibold uppercase tracking-widest text-mint-500/80">
-                  {t("onboarding.selectedGoal")}
-                </p>
-                <p className="text-sm font-semibold text-mint-700 mt-0.5 truncate">
-                  {t(`goal.${goal}`)}
-                </p>
               </div>
             </div>
 
