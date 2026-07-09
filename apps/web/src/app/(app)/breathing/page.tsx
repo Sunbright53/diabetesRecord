@@ -73,7 +73,7 @@ export default function BreathingPage() {
               </div>
             </div>
             {ownedDevice ? (
-              <Link href={`/me/device/${primaryDevice.id}/settings`} className="h-9 w-9 rounded-xl bg-bg-raised flex items-center justify-center">
+              <Link href="/me/device" className="h-9 w-9 rounded-xl bg-bg-raised flex items-center justify-center">
                 <Settings size={16} className="text-text-muted" />
               </Link>
             ) : (
