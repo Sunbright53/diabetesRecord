@@ -113,6 +113,11 @@ export const en: Dict = {
     doneTitle: "Ready to start",
     doneSubtitle: "You can set up more reminders in your profile",
     tip: "Tip: Log daily to build your streak and earn XP",
+    tipTitle: "Your 3 Daily MetaBreath",
+    tipTime1: "On waking",
+    tipTime2: "60 min after breakfast",
+    tipTime3: "120 min after breakfast",
+    tipFooter: "Small breaths, big insights.",
     start: "Let's go",
   },
   nav: {

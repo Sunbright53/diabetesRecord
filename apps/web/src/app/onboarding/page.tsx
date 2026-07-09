@@ -215,7 +215,7 @@ export default function OnboardingPage() {
               <div className="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-mint-50 border border-mint-100">
                 <Bell size={24} className="text-mint-600" strokeWidth={1.4} />
               </div>
-              <h2 className="text-lg font-semibold text-charcoal-500 mt-4 tracking-tight">
+              <h2 className="text-lg font-semibold text-gray-900 mt-4 tracking-tight">
                 {t("onboarding.doneTitle")}
               </h2>
               <p className="text-sm text-muted mt-2 leading-relaxed">
@@ -223,9 +223,24 @@ export default function OnboardingPage() {
               </p>
             </div>
 
-            <div className="rounded-xl bg-gold-50 border border-gold-100 p-4">
-              <p className="text-sm text-gold-700 font-medium text-center leading-relaxed">
-                {t("onboarding.tip")}
+            <div className="rounded-xl bg-mint-50 border border-mint-200/60 p-4 space-y-3">
+              <p className="text-xs font-bold text-mint-700 text-center uppercase tracking-widest">
+                {t("onboarding.tipTitle")}
+              </p>
+              <div className="space-y-2">
+                {([
+                  { emoji: "🌅", key: "tipTime1" },
+                  { emoji: "🍳", key: "tipTime2" },
+                  { emoji: "⏱️", key: "tipTime3" },
+                ] as const).map(({ emoji, key }) => (
+                  <div key={key} className="flex items-center gap-3 bg-white rounded-lg px-3 py-2 border border-mint-100 shadow-[0_1px_3px_rgba(72,199,140,0.08)]">
+                    <span className="text-base leading-none">{emoji}</span>
+                    <span className="text-sm font-medium text-gray-700">{t(`onboarding.${key}`)}</span>
+                  </div>
+                ))}
+              </div>
+              <p className="text-xs text-mint-600 font-medium text-center italic">
+                {t("onboarding.tipFooter")}
               </p>
             </div>
 
