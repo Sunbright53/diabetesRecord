@@ -32,6 +32,7 @@ export default function OnboardingPage() {
   const { user, refreshUser } = useAuth();
   const { t, locale } = useT();
   const [step, setStep] = useState(0);
+  const [subStep, setSubStep] = useState(0);
   const [saving, setSaving] = useState(false);
 
   const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm<BodyData>({
@@ -77,7 +78,7 @@ export default function OnboardingPage() {
           <div className="inline-flex h-14 w-14 items-center justify-center rounded-2xl border border-border-soft bg-white mb-4 shadow-[0_1px_2px_rgba(20,20,20,0.03)]">
             <BrandMark className="h-7 w-7" />
           </div>
-          <h1 className="text-2xl font-semibold text-charcoal-500 tracking-tight">{t("onboarding.welcome")}</h1>
+          <h1 className="text-2xl font-semibold text-gray-900 tracking-tight">{t("onboarding.welcome")}</h1>
           <p className="text-sm text-muted mt-1">
             {t("onboarding.hello")}, {user?.profile?.display_name ?? user?.username}
           </p>
@@ -103,7 +104,6 @@ export default function OnboardingPage() {
         {/* Step 0: Goal confirm */}
         {step === 0 && (
           <div className="rounded-2xl bg-white border border-border-soft shadow-[0_4px_20px_rgba(72,199,140,0.08)] p-6 space-y-5">
-            {/* Icon + headline */}
             <div className="text-center space-y-4">
               <div className="relative inline-flex">
                 <div className="h-20 w-20 flex items-center justify-center rounded-3xl bg-gradient-to-br from-mint-400/20 via-mint-100/40 to-mint-600/10 border border-mint-200/60 shadow-[0_6px_24px_rgba(72,199,140,0.18)]">
@@ -111,14 +111,11 @@ export default function OnboardingPage() {
                 </div>
                 <span className="absolute -top-1 -right-1 text-base">✨</span>
               </div>
-              <div>
-                <h2 className="text-xl font-bold text-gray-900 tracking-tight leading-snug">
-                  {t("onboarding.tagline")}
-                </h2>
-              </div>
+              <h2 className="text-xl font-bold text-gray-900 tracking-tight leading-snug">
+                {t("onboarding.tagline")}
+              </h2>
             </div>
 
-            {/* Selected goals chips */}
             <div className="flex flex-wrap gap-2.5 justify-center">
               {displayGoals.map((g) => {
                 const Icon = GOAL_ICON[g] ?? LineChart;
@@ -134,13 +131,13 @@ export default function OnboardingPage() {
               })}
             </div>
 
-            <Button size="lg" className="w-full" onClick={() => setStep(1)}>
+            <Button size="lg" className="w-full" onClick={() => { setSubStep(0); setStep(1); }}>
               {t("common.next")}
             </Button>
           </div>
         )}
 
-        {/* Step 1: Body metrics */}
+        {/* Step 1: Body metrics — one field group at a time */}
         {step === 1 && (
           <div className="rounded-2xl bg-white border border-border-soft shadow-[0_4px_20px_rgba(20,20,20,0.06)] p-6 space-y-5">
             {/* Header */}
@@ -152,53 +149,83 @@ export default function OnboardingPage() {
                 <h2 className="text-xl font-bold text-gray-900 tracking-tight">{t("onboarding.bodyTitle")}</h2>
                 <p className="text-sm text-gray-500 mt-1">{t("onboarding.bodyHint")}</p>
               </div>
+              {/* Sub-step dot indicators */}
+              <div className="flex gap-1.5 justify-center pt-1">
+                {[0, 1, 2].map((i) => (
+                  <div
+                    key={i}
+                    className={twMerge(
+                      "h-1.5 rounded-full transition-all duration-300",
+                      i === subStep ? "w-6 bg-mint-500" : "w-1.5 bg-gray-200"
+                    )}
+                  />
+                ))}
+              </div>
             </div>
 
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-3">
-                <Input
-                  label={t("onboarding.height")}
-                  type="number"
-                  placeholder="170"
-                  error={errors.height_cm?.message}
-                  {...register("height_cm")}
-                />
-                <Input
-                  label={t("onboarding.weight")}
-                  type="number"
-                  step="0.1"
-                  placeholder="65"
-                  error={errors.weight_kg?.message}
-                  {...register("weight_kg")}
-                />
-              </div>
-              <DobPicker
-                label={t("onboarding.dob")}
-                value={watch("dob")}
-                onChange={(val) => setValue("dob", val)}
-                locale={locale as "en" | "th"}
-              />
-              <div className="space-y-2">
-                <p className="text-sm font-semibold text-gray-900">{t("onboarding.sex")}</p>
-                <div className="grid grid-cols-3 gap-2">
-                  {(["male","female","other"] as const).map((s) => (
-                    <label
-                      key={s}
-                      className="flex cursor-pointer items-center justify-center rounded-xl border-2 border-gray-200 py-2.5 text-sm font-medium text-gray-700 transition-colors has-[:checked]:border-mint-500 has-[:checked]:bg-mint-50 has-[:checked]:text-mint-700"
-                    >
-                      <input type="radio" value={s} className="sr-only" {...register("sex")} />
-                      {t(`onboarding.${s}`)}
-                    </label>
-                  ))}
+            {/* Content area — fixed min-height so card doesn't jump */}
+            <div className="min-h-[120px] flex flex-col justify-center">
+              {subStep === 0 && (
+                <div className="grid grid-cols-2 gap-3">
+                  <Input
+                    label={t("onboarding.height")}
+                    type="number"
+                    placeholder="170"
+                    error={errors.height_cm?.message}
+                    {...register("height_cm")}
+                  />
+                  <Input
+                    label={t("onboarding.weight")}
+                    type="number"
+                    step="0.1"
+                    placeholder="65"
+                    error={errors.weight_kg?.message}
+                    {...register("weight_kg")}
+                  />
                 </div>
-              </div>
+              )}
+
+              {subStep === 1 && (
+                <DobPicker
+                  label={t("onboarding.dob")}
+                  value={watch("dob")}
+                  onChange={(val) => setValue("dob", val)}
+                  locale={locale as "en" | "th"}
+                />
+              )}
+
+              {subStep === 2 && (
+                <div className="space-y-2">
+                  <p className="text-sm font-semibold text-gray-900">{t("onboarding.sex")}</p>
+                  <div className="grid grid-cols-3 gap-2">
+                    {(["male", "female", "other"] as const).map((s) => (
+                      <label
+                        key={s}
+                        className="flex cursor-pointer items-center justify-center rounded-xl border-2 border-gray-200 py-3 text-sm font-medium text-gray-700 transition-colors has-[:checked]:border-mint-500 has-[:checked]:bg-mint-50 has-[:checked]:text-mint-700"
+                      >
+                        <input type="radio" value={s} className="sr-only" {...register("sex")} />
+                        {t(`onboarding.${s}`)}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="flex gap-2">
-              <Button variant="ghost" size="lg" className="flex-1" onClick={() => setStep(0)}>
+              <Button
+                variant="ghost"
+                size="lg"
+                className="flex-1"
+                onClick={() => subStep === 0 ? setStep(0) : setSubStep((s) => s - 1)}
+              >
                 {t("common.back")}
               </Button>
-              <Button size="lg" className="flex-1" onClick={() => setStep(2)}>
+              <Button
+                size="lg"
+                className="flex-1"
+                onClick={() => subStep < 2 ? setSubStep((s) => s + 1) : setStep(2)}
+              >
                 {t("common.next")}
               </Button>
             </div>
@@ -250,7 +277,7 @@ export default function OnboardingPage() {
                 variant="ghost"
                 size="lg"
                 className="flex-1"
-                onClick={() => setStep(1)}
+                onClick={() => { setStep(1); setSubStep(2); }}
               >
                 {t("common.back")}
               </Button>
