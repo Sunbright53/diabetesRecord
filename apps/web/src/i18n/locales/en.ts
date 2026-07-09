@@ -111,7 +111,7 @@ export const en: Dict = {
     female: "Female",
     other: "Other",
     doneTitle: "Ready to start",
-    doneSubtitle: "You can set up more reminders in your profile",
+    doneSubtitle: "You can set up reminders anytime in your Profile.",
     tip: "Tip: Log daily to build your streak and earn XP",
     tipTitle: "Your 3 Daily MetaBreath",
     tipTime1: "On waking",
