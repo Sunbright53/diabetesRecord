@@ -16,7 +16,7 @@ export function LangSwitcher({ className }: { className?: string }) {
         onClick={() => setLocale("th")}
         className={twMerge(
           "px-2.5 py-1 rounded-full transition-colors tracking-wide",
-          locale === "th" ? "bg-charcoal-500 text-white" : "text-charcoal-500/60 hover:text-charcoal-500",
+          locale === "th" ? "bg-mint-500 text-white" : "text-charcoal-500/50 hover:text-charcoal-500",
         )}
         aria-pressed={locale === "th"}
       >
@@ -26,7 +26,7 @@ export function LangSwitcher({ className }: { className?: string }) {
         onClick={() => setLocale("en")}
         className={twMerge(
           "px-2.5 py-1 rounded-full transition-colors tracking-wide",
-          locale === "en" ? "bg-charcoal-500 text-white" : "text-charcoal-500/60 hover:text-charcoal-500",
+          locale === "en" ? "bg-mint-500 text-white" : "text-charcoal-500/50 hover:text-charcoal-500",
         )}
         aria-pressed={locale === "en"}
       >
