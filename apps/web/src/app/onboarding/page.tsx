@@ -118,16 +118,16 @@ export default function OnboardingPage() {
             </div>
 
             {/* Selected goals chips */}
-            <div className="flex flex-wrap gap-2 justify-center">
+            <div className="flex flex-wrap gap-2.5 justify-center">
               {displayGoals.map((g) => {
                 const Icon = GOAL_ICON[g] ?? LineChart;
                 return (
                   <div
                     key={g}
-                    className="flex items-center gap-1.5 rounded-full bg-mint-50 border border-mint-200/70 px-3 py-1.5"
+                    className="flex items-center gap-2 rounded-2xl bg-mint-50 border-2 border-mint-300 px-4 py-2.5 shadow-[0_2px_8px_rgba(72,199,140,0.15)]"
                   >
-                    <Icon size={13} className="text-mint-600" strokeWidth={1.8} />
-                    <span className="text-xs font-semibold text-mint-700">{t(`goal.${g}`)}</span>
+                    <Icon size={18} className="text-mint-600" strokeWidth={2} />
+                    <span className="text-sm font-bold text-mint-700 tracking-tight">{t(`goal.${g}`)}</span>
                   </div>
                 );
               })}
