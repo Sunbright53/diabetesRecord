@@ -3,12 +3,13 @@
 import { useEffect, useRef, useState } from "react";
 import { Wind, X, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
+import { AreaChart, Area, ResponsiveContainer, YAxis } from "recharts";
 import type { AcetoneLabel, LiveReading } from "@/lib/useDeviceStream";
 
-const DURATION_MS = 5_000;
+const DURATION_MS = 10_000;
 const STORAGE_KEY = "breath-sessions";
 const MAX_STORED = 20;
-const MIN_SAMPLES = 5;
+const MIN_SAMPLES = 3;
 
 export interface SessionSummary {
   id: string;
@@ -80,6 +81,7 @@ export default function BreathSession({ liveReading, connected, onSessionSaved }
   const [phase, setPhase] = useState<Phase>("idle");
   const [progress, setProgress] = useState(0);
   const [result, setResult] = useState<SessionSummary | null>(null);
+  const [chartData, setChartData] = useState<{ t: number; mv: number }[]>([]);
 
   const t0 = useRef(0);
   const samplesRef = useRef<LiveReading[]>([]);
@@ -88,11 +90,12 @@ export default function BreathSession({ liveReading, connected, onSessionSaved }
   const onSavedRef = useRef(onSessionSaved);
   useEffect(() => { onSavedRef.current = onSessionSaved; }, [onSessionSaved]);
 
-  // Accumulate samples while counting
+  // Accumulate samples while counting + push to chart
   useEffect(() => {
     if (phase !== "counting" || !liveReading || liveReading === lastReading.current) return;
     lastReading.current = liveReading;
     samplesRef.current.push(liveReading);
+    setChartData(prev => [...prev, { t: prev.length, mv: liveReading.acetone_delta_mv }]);
   }, [liveReading, phase]);
 
   // RAF loop — smooth progress, triggers finalize at 100 %
@@ -157,6 +160,7 @@ export default function BreathSession({ liveReading, connected, onSessionSaved }
     lastReading.current = null;
     t0.current = Date.now();
     setProgress(0);
+    setChartData([]);
     setPhase("counting");
   }
 
@@ -165,6 +169,7 @@ export default function BreathSession({ liveReading, connected, onSessionSaved }
     setPhase("idle");
     setProgress(0);
     setResult(null);
+    setChartData([]);
     samplesRef.current = [];
   }
 
@@ -198,18 +203,20 @@ export default function BreathSession({ liveReading, connected, onSessionSaved }
 
   /* ── counting ── */
   if (phase === "counting") {
+    const mvVals = chartData.map(d => d.mv);
+    const yMin = mvVals.length > 1 ? Math.min(...mvVals) - 5 : 0;
+    const yMax = mvVals.length > 1 ? Math.max(...mvVals) + 5 : 50;
+
     return (
-      <div className="flex flex-col items-center py-8 gap-3">
+      <div className="flex flex-col items-center py-6 gap-4">
         <div className="relative" style={{ width: SZ, height: SZ }}>
           <svg width={SZ} height={SZ} className="rotate-[-90deg]">
-            {/* track */}
             <circle
               cx={SZ / 2} cy={SZ / 2} r={RING_R}
               fill="none" stroke="currentColor"
               className="text-mint-500/20"
               strokeWidth={SW}
             />
-            {/* progress arc */}
             <circle
               cx={SZ / 2} cy={SZ / 2} r={RING_R}
               fill="none" stroke="currentColor"
@@ -225,7 +232,39 @@ export default function BreathSession({ liveReading, connected, onSessionSaved }
             <span className="text-[11px] text-text-muted mt-1">{liveMv.toFixed(0)} mV</span>
           </div>
         </div>
+
         <p className="text-sm font-medium text-text-primary">เป่าออกยาวๆ ค้างไว้</p>
+
+        {/* Live waveform */}
+        <div className="w-full rounded-2xl bg-bg-elevated overflow-hidden" style={{ height: 96 }}>
+          {chartData.length > 1 ? (
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={chartData} margin={{ top: 8, right: 0, left: 0, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="breathGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#00C896" stopOpacity={0.35} />
+                    <stop offset="95%" stopColor="#00C896" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <YAxis domain={[yMin, yMax]} hide />
+                <Area
+                  type="monotoneX"
+                  dataKey="mv"
+                  stroke="#00C896"
+                  strokeWidth={2}
+                  fill="url(#breathGrad)"
+                  dot={false}
+                  isAnimationActive={false}
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="h-full flex items-center justify-center">
+              <p className="text-xs text-text-muted">รอสัญญาณ...</p>
+            </div>
+          )}
+        </div>
+
         <button
           onClick={reset}
           className="flex items-center gap-1.5 text-xs text-text-muted hover:text-text-primary transition-colors"
