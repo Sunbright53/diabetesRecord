@@ -77,6 +77,8 @@ export const en: Dict = {
       schedule: "Schedule",
     },
     yourGoal: "Your goal",
+    tagline: "Let's achieve your goals — together.",
+    motivation: "We'll help you achieve your goals!",
     selectedGoal: "Selected goal",
     bodyTitle: "Body info",
     bodyHint: "Helps us give more accurate calculations (skippable)",

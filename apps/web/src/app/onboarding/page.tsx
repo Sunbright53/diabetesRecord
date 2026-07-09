@@ -40,7 +40,6 @@ export default function OnboardingPage() {
 
   const goal = user?.profile?.goal_type ?? "monitor";
   const GoalIcon = GOAL_ICON[goal] ?? LineChart;
-  const tip = t(`goal.${goal}Tip`);
 
   const steps = [t("onboarding.steps.goal"), t("onboarding.steps.body"), t("onboarding.steps.schedule")];
 
@@ -91,19 +90,40 @@ export default function OnboardingPage() {
 
         {/* Step 0: Goal confirm */}
         {step === 0 && (
-          <div className="rounded-2xl bg-white border border-border-soft shadow-[0_1px_2px_rgba(20,20,20,0.03)] p-6 space-y-5">
-            <div className="text-center">
-              <div className="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-mint-50 border border-mint-100">
-                <GoalIcon size={26} className="text-mint-600" strokeWidth={1.4} />
+          <div className="rounded-2xl bg-white border border-border-soft shadow-[0_4px_20px_rgba(72,199,140,0.08)] p-6 space-y-5">
+            {/* Icon + headline */}
+            <div className="text-center space-y-4">
+              <div className="relative inline-flex">
+                <div className="h-20 w-20 flex items-center justify-center rounded-3xl bg-gradient-to-br from-mint-400/20 via-mint-100/40 to-mint-600/10 border border-mint-200/60 shadow-[0_6px_24px_rgba(72,199,140,0.18)]">
+                  <GoalIcon size={36} className="text-mint-600" strokeWidth={1.4} />
+                </div>
+                <span className="absolute -top-1 -right-1 text-base">✨</span>
               </div>
-              <h2 className="text-lg font-semibold text-charcoal-500 mt-4 tracking-tight">{t("onboarding.yourGoal")}</h2>
-              <p className="text-sm text-muted mt-2 leading-relaxed">{tip}</p>
+              <div>
+                <h2 className="text-xl font-bold text-charcoal-500 tracking-tight leading-snug">
+                  {t("onboarding.tagline")}
+                </h2>
+                <p className="text-sm text-muted mt-1.5 leading-relaxed">
+                  {t("onboarding.motivation")}
+                </p>
+              </div>
             </div>
-            <div className="rounded-xl bg-mint-50/50 border border-mint-100 p-4 text-center">
-              <p className="text-sm font-medium text-mint-700">
-                {t("onboarding.selectedGoal")}: <span className="capitalize">{goal}</span>
-              </p>
+
+            {/* Selected goal pill */}
+            <div className="flex items-center gap-3 rounded-xl bg-gradient-to-r from-mint-50 to-mint-100/40 border border-mint-200/60 px-4 py-3.5">
+              <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-white border border-mint-200/50 shadow-[0_1px_4px_rgba(72,199,140,0.12)]">
+                <GoalIcon size={18} className="text-mint-600" strokeWidth={1.6} />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[10px] font-semibold uppercase tracking-widest text-mint-500/80">
+                  {t("onboarding.selectedGoal")}
+                </p>
+                <p className="text-sm font-semibold text-mint-700 mt-0.5 truncate">
+                  {t(`goal.${goal}`)}
+                </p>
+              </div>
             </div>
+
             <Button size="lg" className="w-full" onClick={() => setStep(1)}>
               {t("common.next")}
             </Button>
