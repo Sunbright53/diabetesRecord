@@ -213,6 +213,69 @@ async def ensure_manual_device(
     )
 
 
+# ─── Register MAC device ─────────────────────────────────────────────────────
+
+class MacDeviceRequest(BaseModel):
+    mac: str          # เช่น 88F155302810
+    user_email: str   # email ของ user ที่จะ link ด้วย
+
+@router.post("/device/mac", response_model=AdminDeviceOut, status_code=201)
+async def register_mac_device(
+    body: MacDeviceRequest,
+    _admin: User = Depends(get_admin_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    ลงทะเบียน ESP32 ด้วย MAC address — ทีมทำครั้งเดียวต่ออุปกรณ์
+    MAC จะถูกใช้เป็น MQTT topic: metabreath/<MAC>/reading
+    """
+    mac = body.mac.upper().replace(":", "").replace("-", "")
+    if len(mac) != 12:
+        raise HTTPException(status_code=400, detail="MAC ต้องมี 12 hex chars เช่น 88F155302810")
+
+    mqtt_topic = f"metabreath/{mac}/reading"
+
+    # หา user จาก email
+    user_result = await db.exec(select(User).where(User.email == body.user_email, User.is_active == True))
+    user = user_result.first()
+    if not user:
+        raise HTTPException(status_code=404, detail=f"User not found: {body.user_email}")
+
+    # ถ้า device MAC นี้มีอยู่แล้ว → return ตัวเดิม (idempotent)
+    existing = await db.exec(select(Device).where(Device.mqtt_topic == mqtt_topic))
+    device = existing.first()
+    if device:
+        # update user_id ถ้าต้องการเปลี่ยน owner
+        if device.user_id != user.id:
+            device.user_id = user.id
+            await db.commit()
+            await db.refresh(device)
+        return AdminDeviceOut(
+            id=str(device.id), kind=device.kind, sensor_model=device.sensor_model,
+            active=device.active, needs_recalibration=device.needs_recalibration,
+            last_calibrated_at=device.last_calibrated_at,
+        )
+
+    device = Device(
+        user_id=user.id,
+        kind="breath",
+        sensor_model="TGS1820",
+        firmware_version="v2-mac",
+        active=True,
+        mqtt_topic=mqtt_topic,
+        secret=_secrets.token_hex(16),
+    )
+    db.add(device)
+    await db.commit()
+    await db.refresh(device)
+
+    return AdminDeviceOut(
+        id=str(device.id), kind=device.kind, sensor_model=device.sensor_model,
+        active=device.active, needs_recalibration=device.needs_recalibration,
+        last_calibrated_at=device.last_calibrated_at,
+    )
+
+
 # ─── Submit reading ──────────────────────────────────────────────────────────
 
 @router.post("/reading", response_model=AdminReadingOut, status_code=201)

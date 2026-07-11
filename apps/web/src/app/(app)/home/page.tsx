@@ -5,8 +5,10 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useT } from "@/lib/i18n";
 import { useDeviceStream } from "@/lib/useDeviceStream";
+import { parseServerTime } from "@/lib/time";
+import { useUnits } from "@/lib/units";
 import { AcetoneRing } from "@/components/cards/AcetoneRing";
-import { MetricCard } from "@/components/cards/MetricCard";
+import { TodayMetricCard } from "@/components/cards/TodayMetricCard";
 import { CategoryCard } from "@/components/cards/CategoryCard";
 import Link from "next/link";
 import { Flame, ChevronRight } from "lucide-react";
@@ -16,20 +18,38 @@ export default function HomePage() {
   const { t, locale } = useT();
   const name = user?.profile?.display_name ?? user?.username ?? "—";
   const { reading: liveReading } = useDeviceStream(user?.id);
+  const { format: fmtAcetone, label: unitLbl } = useUnits();
 
   // "Live" only if we received a reading within the last 60 seconds
   const liveConnected = !!liveReading &&
-    (Date.now() - new Date(liveReading.time).getTime() < 60_000);
+    (Date.now() - parseServerTime(liveReading.time).getTime() < 60_000);
 
   const { data: streak } = useQuery({ queryKey: ["me", "streak"], queryFn: api.gamification.getStreak });
   const { data: xp }    = useQuery({ queryKey: ["me", "xp"],     queryFn: api.gamification.getXP });
   const { data: quests } = useQuery({ queryKey: ["me", "quests"], queryFn: api.gamification.getQuestsToday });
 
+  // Newest owned device OR a shared device this user has claimed — either
+  // path lets us read stats for the physical ESP32.
+  const { data: devices } = useQuery({ queryKey: ["sensor", "devices"], queryFn: api.sensor.listDevices });
+  const { data: sharedDevices } = useQuery({ queryKey: ["sensor", "shared-devices"], queryFn: api.sensor.listSharedDevices, refetchInterval: 30_000 });
+  const deviceId = devices?.[0]?.id ?? sharedDevices?.find((d) => d.claimed_by_me)?.id;
+  const { data: dailyStats } = useQuery({
+    queryKey: ["sensor", "daily-stats", deviceId, 1],
+    queryFn:  () => api.sensor.getDailyStats(deviceId!, 1),
+    enabled:  !!deviceId,
+    refetchInterval: 30_000,
+  });
+  const today = dailyStats?.[0];
+
   const dateLocale = locale === "th" ? "th-TH" : "en-US";
   const dateStr = new Date().toLocaleDateString(dateLocale, { weekday: "short", day: "numeric", month: "short" });
 
-  const liveValue = liveReading?.acetone_delta_mv ?? null;
-  const liveLabel = liveReading?.label ?? null;
+  // Hero shows today's peak (max) instead of avg: continuous readings include
+  // baseline noise/drift that skews the mean, but peak reflects the highest
+  // acetone level observed during a breath test.
+  const heroValue = today?.max_acetone_delta ?? liveReading?.acetone_delta_mv ?? null;
+  const heroLabel = today?.dominant_label ?? liveReading?.label ?? null;
+  const heroCount = today?.count ?? 0;
 
   const questDone = quests?.filter((q) => q.completed_at).length ?? 0;
   const questTotal = quests?.length ?? 0;
@@ -50,14 +70,20 @@ export default function HomePage() {
         )}
       </div>
 
-      {/* Acetone hero ring */}
+      {/* Acetone hero ring — today's average */}
       <div className="bg-bg-elevated rounded-3xl p-6 flex flex-col items-center gap-4">
-        <p className="text-xs text-text-muted font-semibold uppercase tracking-widest">{t("health.liveBreath")}</p>
-        <AcetoneRing value={liveValue} label={liveLabel} size={200} />
+        <p className="text-xs text-text-muted font-semibold uppercase tracking-widest">
+          BREATH ACETONE · สูงสุดวันนี้
+        </p>
+        <AcetoneRing value={heroValue} label={heroLabel} size={200} />
         <div className="flex items-center gap-2">
           <div className={`h-2 w-2 rounded-full ${liveConnected ? "bg-mint-500 animate-pulse" : "bg-text-disabled"}`} />
           <span className="text-xs text-text-muted">
-            {liveConnected ? "Live · MetaBreath" : (
+            {liveConnected ? (
+              <>Live · MetaBreath {liveReading && `(${fmtAcetone(liveReading.acetone_delta_mv)} ${unitLbl})`}</>
+            ) : heroCount > 0 ? (
+              <>{t("health.connectDevice") ?? "อุปกรณ์ไม่ได้เชื่อมต่อ"}</>
+            ) : (
               <Link href="/me/device" className="underline text-mint-500">
                 {t("health.connectDevice")}
               </Link>
@@ -86,11 +112,11 @@ export default function HomePage() {
         )}
       </div>
 
-      {/* Metrics row */}
+      {/* Daily entry metrics — tap to log/edit today's value */}
       <div className="grid grid-cols-3 gap-3">
-        <MetricCard icon="🔥" label="Calories" value="—" goal={undefined} unit="kcal" />
-        <MetricCard icon="👣" label="Steps"    value="—" goal={undefined} />
-        <MetricCard icon="⏱" label="Move"     value="—" unit="min" goal={undefined} />
+        <TodayMetricCard kind="weight" />
+        <TodayMetricCard kind="steps" />
+        <TodayMetricCard kind="calories" />
       </div>
 
       {/* Category cards */}
@@ -100,8 +126,8 @@ export default function HomePage() {
           <CategoryCard
             icon="🌬"
             title="Breathing"
-            value={liveValue != null ? `${liveValue.toFixed(0)} mV` : "—"}
-            sub={liveLabel ?? "ไม่มีข้อมูล"}
+            value={heroValue != null ? `${fmtAcetone(heroValue)} ${unitLbl}` : "—"}
+            sub={heroLabel ?? "ไม่มีข้อมูล"}
             href="/breathing"
             iconBg="#00C896"
           />
@@ -141,10 +167,10 @@ export default function HomePage() {
         {liveReading ? (
           <div className="bg-bg-elevated rounded-2xl p-4 flex items-center gap-3">
             <div className="text-right min-w-[44px]">
-              <p className="text-xs text-text-muted">{new Date(liveReading.time).toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" })}</p>
+              <p className="text-xs text-text-muted">{parseServerTime(liveReading.time).toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" })}</p>
             </div>
             <div className="flex-1">
-              <p className="text-sm font-semibold text-text-primary">{liveReading.acetone_delta_mv.toFixed(0)} mV</p>
+              <p className="text-sm font-semibold text-text-primary">{fmtAcetone(liveReading.acetone_delta_mv)} {unitLbl}</p>
               <p className="text-xs text-text-muted mt-0.5">
                 {liveReading.pressure_kpa != null && `${liveReading.pressure_kpa.toFixed(2)} kPa · `}
                 Q: {liveReading.quality_score?.toFixed(0)}/100

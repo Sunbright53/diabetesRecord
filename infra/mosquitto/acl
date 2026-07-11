@@ -6,11 +6,11 @@
 
 user esp32
 topic write metabreath/+/reading
-topic read metabreath/+/cmd
+topic read metabreath/+/command
 
 user api
 topic read metabreath/+/reading
-topic write metabreath/+/cmd
+topic write metabreath/+/command
 
 user admin
 topic readwrite #

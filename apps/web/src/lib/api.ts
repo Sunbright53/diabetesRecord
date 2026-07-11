@@ -388,6 +388,31 @@ export interface DeviceOut {
   sensor_model: string | null;
 }
 
+export interface DailyStat {
+  date: string;            // YYYY-MM-DD
+  count: number;
+  avg_acetone_delta: number | null;  // mV
+  max_acetone_delta: number | null;  // mV
+  min_acetone_delta: number | null;  // mV
+  avg_temp_c: number | null;
+  avg_humidity_pct: number | null;
+  dominant_label: string | null;
+}
+
+export interface SessionSummaryOut {
+  session_id: string;            // e.g. "sunbright1"
+  started_at: string;
+  ended_at: string;
+  duration_seconds: number;
+  n_samples: number;
+  peak_acetone_delta: number | null;
+  mean_acetone_delta: number | null;
+  avg_pressure_kpa: number | null;
+  avg_temp_c: number | null;
+  avg_humidity_pct: number | null;
+  dominant_label: string | null;
+}
+
 // ─── Shared device pool (session-based multi-user access) ────
 export interface SharedDeviceOut {
   id: string;
@@ -585,8 +610,14 @@ export const api = {
     provisionToken: () =>
       request<{ token: string; expires_in: number; api_base: string }>("/sensor/provision/token", { method: "POST" }),
     listDevices: () => request<DeviceOut[]>("/sensor/devices"),
-    getReadings: (deviceId: string, days = 7) =>
-      request<SensorReadingOut[]>(`/sensor/readings?device_id=${deviceId}&days=${days}`),
+    getReadings: (deviceId: string, days = 7, limit = 0) =>
+      request<SensorReadingOut[]>(
+        `/sensor/readings?device_id=${deviceId}&days=${days}${limit ? `&limit=${limit}` : ""}`
+      ),
+    getDailyStats: (deviceId: string, days = 7) =>
+      request<DailyStat[]>(`/sensor/daily-stats?device_id=${deviceId}&days=${days}`),
+    getSessions: (days = 7) =>
+      request<SessionSummaryOut[]>(`/sensor/sessions?days=${days}`),
     calibrationReport: (deviceId: string) =>
       request<CalibrationReportOut>(`/sensor/device/${deviceId}/calibration/report`),
     calibrateDevice: (deviceId: string, data: {
@@ -606,6 +637,27 @@ export const api = {
         device_id: string; mqtt_topic: string; mqtt_user: string;
         mqtt_broker: string; mqtt_port: number; secret: string; message: string;
       }>("/sensor/device/pair", { method: "POST", body: JSON.stringify(data ?? {}) }),
+    resetWifi: (deviceId: string) =>
+      request<{ cmd_id: string; status: string }>(
+        `/sensor/device/${deviceId}/reset-wifi`,
+        { method: "POST" }
+      ),
+    unlinkDevice: (deviceId: string) =>
+      request<void>(`/sensor/device/${deviceId}`, { method: "DELETE" }),
+    startRecording: (deviceId: string) =>
+      request<{ session_id: string; expires_in: number }>(
+        `/sensor/device/${deviceId}/recording/start`,
+        { method: "POST" }
+      ),
+    stopRecording: (deviceId: string) =>
+      request<{ stopped: boolean }>(
+        `/sensor/device/${deviceId}/recording/stop`,
+        { method: "POST" }
+      ),
+    recordingStatus: (deviceId: string) =>
+      request<{ active: boolean; session_id: string | null; ttl_seconds: number | null; online: boolean }>(
+        `/sensor/device/${deviceId}/recording/status`
+      ),
     // Shared-device pool
     listSharedDevices: () => request<SharedDeviceOut[]>("/sensor/devices/pool"),
     claimSharedDevice: (deviceId: string) =>

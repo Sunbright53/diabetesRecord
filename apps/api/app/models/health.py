@@ -70,6 +70,10 @@ class SensorReading(SQLModel, table=True):
     confidence_score: Optional[float] = None     # 0–1
     label: Optional[str] = Field(default=None, max_length=30)  # low|moderate|high|unreliable
 
+    # Session grouping — sensor_readings within the same recording session
+    # share this id, formatted as "{username}{seq}" (e.g. "sunbright1").
+    session_id: Optional[str] = Field(default=None, max_length=64, index=True)
+
 
 class DeviceCalibration(SQLModel, table=True):
     """Baseline + drift tracking per device (Judge #2, #3 evidence)."""

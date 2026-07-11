@@ -3,14 +3,13 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api, type SharedDeviceOut } from "@/lib/api";
+import { parseServerTime } from "@/lib/time";
 import { useAuth } from "@/lib/auth";
 import { useDeviceStream } from "@/lib/useDeviceStream";
 import Link from "next/link";
-import { ChevronRight, Settings, BarChart2, FlaskConical, Radio } from "lucide-react";
+import { Settings, Radio, TrendingUp, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import { useT } from "@/lib/i18n";
-import { useQueryClient } from "@tanstack/react-query";
-import UrineKetoneLogger from "@/components/UrineKetoneLogger";
 import BreathSession, {
   RecentBreathSessions,
   loadSessions,
@@ -20,13 +19,8 @@ import BreathSession, {
 export default function BreathingPage() {
   const { user } = useAuth();
   const { t } = useT();
-  const queryClient = useQueryClient();
   const { reading: liveReading } = useDeviceStream(user?.id);
   const [sessions, setSessions] = useState<SessionSummary[]>(() => loadSessions());
-
-  // "Connected" = actually receiving data (last reading < 60s), not just WS open
-  const connected = !!liveReading &&
-    (Date.now() - new Date(liveReading.time).getTime() < 60_000);
 
   const { data: devices } = useQuery({
     queryKey: ["sensor", "devices"],
@@ -51,6 +45,16 @@ export default function BreathingPage() {
     last_calibrated_at: null,
     sensor_model: myClaim.sensor_model,
   } : undefined);
+
+  // Poll heartbeat: ESP32 sends every ~3s, backend refreshes 60s TTL.
+  // WebSocket live readings only arrive during an active recording session.
+  const { data: recStatus } = useQuery({
+    queryKey: ["sensor", "recording-status", primaryDevice?.id],
+    queryFn:  () => api.sensor.recordingStatus(primaryDevice!.id),
+    enabled:  !!primaryDevice?.id,
+    refetchInterval: 10_000,
+  });
+  const connected = recStatus?.online ?? false;
 
   return (
     <div className="max-w-md mx-auto px-4 pt-5 pb-24 space-y-5">
@@ -121,31 +125,26 @@ export default function BreathingPage() {
       <BreathSession
         liveReading={liveReading}
         connected={connected}
+        deviceId={primaryDevice?.id ?? null}
         onSessionSaved={() => setSessions(loadSessions())}
       />
 
-      {/* Quick actions */}
+      {/* Trends shortcut */}
       {primaryDevice && (
-        <div className="grid grid-cols-3 gap-3">
-          <Link href={`/me/device/${primaryDevice.id}/calibrate`} className="bg-bg-elevated rounded-xl p-3 flex flex-col items-center gap-1.5 hover:bg-bg-raised transition-colors">
-            <FlaskConical size={18} className="text-mint-500" strokeWidth={1.6} />
-            <span className="text-xs text-text-muted">{t("breathing.calibrate")}</span>
-          </Link>
-          <Link href={`/me/device/${primaryDevice.id}/report`} className="bg-bg-elevated rounded-xl p-3 flex flex-col items-center gap-1.5 hover:bg-bg-raised transition-colors">
-            <BarChart2 size={18} className="text-blue-400" strokeWidth={1.6} />
-            <span className="text-xs text-text-muted">{t("breathing.report")}</span>
-          </Link>
-          <Link href="/trends" className="bg-bg-elevated rounded-xl p-3 flex flex-col items-center gap-1.5 hover:bg-bg-raised transition-colors">
-            <ChevronRight size={18} className="text-text-muted" strokeWidth={1.6} />
-            <span className="text-xs text-text-muted">{t("breathing.trend")}</span>
-          </Link>
-        </div>
+        <Link
+          href="/trends"
+          className="flex items-center gap-3 bg-bg-elevated rounded-2xl p-4 hover:bg-bg-raised transition-colors"
+        >
+          <div className="h-9 w-9 rounded-xl bg-blue-500/20 flex items-center justify-center">
+            <TrendingUp size={16} className="text-blue-400" strokeWidth={1.6} />
+          </div>
+          <div className="flex-1">
+            <p className="text-sm font-medium text-text-primary">{t("breathing.trend") ?? "แนวโน้ม"}</p>
+            <p className="text-xs text-text-muted mt-0.5">ดูค่าเฉลี่ยและกราฟย้อนหลัง</p>
+          </div>
+          <ChevronRight size={14} className="text-text-disabled" />
+        </Link>
       )}
-
-      {/* Urine ketone reference (ground truth for breath↔urine agreement) */}
-      <UrineKetoneLogger
-        onLogged={() => queryClient.invalidateQueries({ queryKey: ["logs", "ketone"] })}
-      />
 
       {/* Recent sessions — stored locally after each breath session */}
       <RecentBreathSessions sessions={sessions} />
@@ -163,7 +162,7 @@ function SharedDeviceCard({
 }) {
   const [busy, setBusy] = useState(false);
   const online = device.last_seen_at &&
-    (Date.now() - new Date(device.last_seen_at).getTime() < 60_000);
+    (Date.now() - parseServerTime(device.last_seen_at).getTime() < 60_000);
 
   async function handleClaim() {
     setBusy(true);

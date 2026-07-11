@@ -7,9 +7,10 @@ import { useT } from "@/lib/i18n";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
-  Palette, Globe, LogOut, ChevronRight,
+  Palette, Globe, LogOut, ChevronRight, Ruler,
   Flame, Trophy, Star, Shield,
 } from "lucide-react";
+import { unitLabel, useUnits } from "@/lib/units";
 
 const XP_PER_LEVEL = 100;
 
@@ -17,6 +18,7 @@ export default function MePage() {
   const { user, logout } = useAuth();
   const { t, locale, setLocale } = useT();
   const router = useRouter();
+  const { unit: acUnit } = useUnits();
 
   const { data: xp }     = useQuery({ queryKey: ["me", "xp"],     queryFn: api.gamification.getXP });
   const { data: streak } = useQuery({ queryKey: ["me", "streak"], queryFn: api.gamification.getStreak });
@@ -127,6 +129,18 @@ export default function MePage() {
             <Palette size={15} className="text-mint-500" />
           </div>
           <span className="flex-1 text-sm text-mint-500 font-medium">Theme & appearance</span>
+          <ChevronRight size={14} className="text-text-disabled" />
+        </Link>
+
+        {/* Acetone units — functional */}
+        <Link href="/me/settings/units" className="flex items-center gap-3 px-4 py-3.5 border-b border-border-soft hover:bg-bg-raised transition-colors">
+          <div className="h-8 w-8 rounded-lg bg-blue-500/20 flex items-center justify-center">
+            <Ruler size={15} className="text-blue-400" />
+          </div>
+          <span className="flex-1 text-sm text-text-primary font-medium">หน่วยของ Acetone</span>
+          <span className="text-xs text-text-muted font-mono bg-bg-raised px-2 py-0.5 rounded-full">
+            {unitLabel(acUnit)}
+          </span>
           <ChevronRight size={14} className="text-text-disabled" />
         </Link>
 

@@ -16,6 +16,7 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useT } from "@/lib/i18n";
 import { useDeviceStream } from "@/lib/useDeviceStream";
+import { convertFromMv, useUnits } from "@/lib/units";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Wind } from "lucide-react";
@@ -31,13 +32,6 @@ function EmptyChart({ label }: { label: string }) {
   );
 }
 
-const ACETONE_LABEL_COLOR: Record<string, string> = {
-  low: "bg-mint-500",
-  moderate: "bg-amber-400",
-  high: "bg-red-500",
-  unreliable: "bg-gray-300",
-};
-
 const ACETONE_ZONE_COLOR: Record<string, string> = {
   low:        "#00C896",
   moderate:   "#F59E0B",
@@ -48,16 +42,29 @@ const ACETONE_ZONE_COLOR: Record<string, string> = {
 export default function TrendsPage() {
   const { t, locale } = useT();
   const { user } = useAuth();
+  const { unit: acUnit, format: fmtAcetone, label: acUnitLbl } = useUnits();
+  // Firmware thresholds are in mV; convert for zone reference lines
+  const moderateThreshold = convertFromMv(30, acUnit);
+  const highThreshold     = convertFromMv(80, acUnit);
+
+  const acDecimals = acUnit === "mV" ? 0 : 2;
   const [days, setDays] = useState(7);
   const [selectedDevice, setSelectedDevice] = useState<string | null>(null);
-  const { reading: liveReading, connected: liveConnected } = useDeviceStream(user?.id);
+  useDeviceStream(user?.id);
 
   const { data: devices } = useQuery({
     queryKey: ["devices"],
     queryFn: () => api.sensor.listDevices(),
   });
+  const { data: sharedDevices } = useQuery({
+    queryKey: ["shared-devices"],
+    queryFn: () => api.sensor.listSharedDevices(),
+    refetchInterval: 30_000,
+  });
+  const claimedSharedId = sharedDevices?.find((d) => d.claimed_by_me)?.id;
 
   const RANGES = [
+    { label: "1 day",   days: 1  },
     { label: t("trends.ranges.d7"),  days: 7  },
     { label: t("trends.ranges.d30"), days: 30 },
     { label: t("trends.ranges.d90"), days: 90 },
@@ -77,13 +84,25 @@ export default function TrendsPage() {
     queryFn:  () => api.logs.getWeight({ days }),
   });
 
-  // Pick first active device if none selected
-  const effectiveDevice = selectedDevice ?? devices?.find((d) => d.active)?.id ?? devices?.[0]?.id ?? null;
+  // Pick first active owned device, else the shared device the user has claimed.
+  const effectiveDevice =
+    selectedDevice
+    ?? devices?.find((d) => d.active)?.id
+    ?? devices?.[0]?.id
+    ?? claimedSharedId
+    ?? null;
 
   const { data: sensorReadings, isLoading: sLoading } = useQuery({
     queryKey: ["sensor-readings", effectiveDevice, days],
     queryFn:  () => api.sensor.getReadings(effectiveDevice!, days),
     enabled:  !!effectiveDevice,
+  });
+
+  const { data: dailyStats } = useQuery({
+    queryKey: ["daily-stats", effectiveDevice, days],
+    queryFn:  () => api.sensor.getDailyStats(effectiveDevice!, days),
+    enabled:  !!effectiveDevice,
+    refetchInterval: 60_000,
   });
 
   const ketoneData = (ketone ?? []).map((k) => ({
@@ -95,7 +114,7 @@ export default function TrendsPage() {
     .filter((r) => r.acetone_delta !== null)
     .map((r) => ({
       date:     fmt(r.time),
-      value:    +(r.acetone_delta!.toFixed(2)),
+      value:    +convertFromMv(r.acetone_delta!, acUnit).toFixed(2),
       label:    r.label ?? "unreliable",
       quality:  r.quality_score ?? 0,
     }));
@@ -127,46 +146,6 @@ export default function TrendsPage() {
           ))}
         </div>
       </div>
-
-      {/* Live breath acetone from MetaBreath device */}
-      {(liveConnected || liveReading) && (
-        <Card>
-          <CardContent className="pt-4 pb-4">
-            <div className="flex items-center justify-between mb-3">
-              <div>
-                <h2 className="font-semibold text-charcoal-500 tracking-tight">Breath Acetone (Live)</h2>
-                <p className="text-xs text-muted mt-0.5">ppm — MetaBreath TGS1820</p>
-              </div>
-              <div className="flex items-center gap-2">
-                {liveReading && (
-                  <span className={`h-2 w-2 rounded-full ${ACETONE_LABEL_COLOR[liveReading.label] ?? "bg-gray-300"}`} />
-                )}
-                <Badge variant={liveConnected ? "mint" : "gray"}>
-                  {liveConnected ? "Live" : "Disconnected"}
-                </Badge>
-              </div>
-            </div>
-            {liveReading ? (
-              <div className="grid grid-cols-3 gap-3">
-                <div className="bg-surface-2 rounded-xl p-3 text-center">
-                  <p className="text-2xl font-bold text-charcoal-500">{liveReading.acetone_delta_mv.toFixed(0)}</p>
-                  <p className="text-[10px] text-muted mt-0.5">mV acetone Δ</p>
-                </div>
-                <div className="bg-surface-2 rounded-xl p-3 text-center">
-                  <p className="text-2xl font-bold text-charcoal-500">{liveReading.quality_score.toFixed(0)}</p>
-                  <p className="text-[10px] text-muted mt-0.5">quality/100</p>
-                </div>
-                <div className="bg-surface-2 rounded-xl p-3 text-center">
-                  <p className="text-2xl font-bold text-charcoal-500">{(liveReading.confidence_score * 100).toFixed(0)}%</p>
-                  <p className="text-[10px] text-muted mt-0.5">confidence</p>
-                </div>
-              </div>
-            ) : (
-              <p className="text-sm text-muted text-center py-3">รอข้อมูลจากอุปกรณ์...</p>
-            )}
-          </CardContent>
-        </Card>
-      )}
 
       {/* Ketone chart */}
       <Card>
@@ -265,7 +244,7 @@ export default function TrendsPage() {
       </Card>
 
       {/* Breath Acetone history */}
-      {(devices && devices.length > 0) && (
+      {effectiveDevice && (
         <Card>
           <CardContent className="pt-5">
             <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
@@ -274,25 +253,27 @@ export default function TrendsPage() {
                   <Wind size={14} className="text-mint-500" strokeWidth={1.6} />
                   <h2 className="font-semibold text-charcoal-500 tracking-tight">Breath Acetone</h2>
                 </div>
-                <p className="text-xs text-muted mt-0.5">ppm — TGS1820</p>
+                <p className="text-xs text-muted mt-0.5">{acUnitLbl} — TGS1820</p>
               </div>
               <div className="flex items-center gap-2">
                 {acetoneData.length > 0 && (
                   <Badge variant="mint">
-                    เฉลี่ย {(acetoneData.reduce((s, d) => s + d.value, 0) / acetoneData.length).toFixed(1)} ppm
+                    เฉลี่ย {(acetoneData.reduce((s, d) => s + d.value, 0) / acetoneData.length).toFixed(acDecimals)} {acUnitLbl}
                   </Badge>
                 )}
-                <select
-                  value={effectiveDevice ?? ""}
-                  onChange={(e) => setSelectedDevice(e.target.value || null)}
-                  className="text-xs border border-border-soft rounded-lg px-2 py-1 text-charcoal-500 bg-surface-2 focus:outline-none"
-                >
-                  {devices.map((d) => (
-                    <option key={d.id} value={d.id}>
-                      {d.id.slice(0, 8)}… {d.active ? "●" : "○"}
-                    </option>
-                  ))}
-                </select>
+                {(devices?.length ?? 0) > 1 && (
+                  <select
+                    value={effectiveDevice ?? ""}
+                    onChange={(e) => setSelectedDevice(e.target.value || null)}
+                    className="text-xs border border-border-soft rounded-lg px-2 py-1 text-charcoal-500 bg-surface-2 focus:outline-none"
+                  >
+                    {devices!.map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {d.id.slice(0, 8)}… {d.active ? "●" : "○"}
+                      </option>
+                    ))}
+                  </select>
+                )}
               </div>
             </div>
 
@@ -312,12 +293,12 @@ export default function TrendsPage() {
                     <Tooltip
                       contentStyle={{ borderRadius: 10, border: "1px solid #EEEDE8", fontSize: 12 }}
                       formatter={(v, _name, props) => [
-                        `${v} ppm (${props.payload?.label ?? ""})`,
+                        `${v} ${acUnitLbl} (${props.payload?.label ?? ""})`,
                         "Acetone",
                       ]}
                     />
-                    <ReferenceLine y={2} stroke="#F59E0B" strokeDasharray="4 3" label={{ value: "Moderate", fontSize: 10, fill: "#B45309" }} />
-                    <ReferenceLine y={5} stroke="#EF4444" strokeDasharray="4 3" label={{ value: "High", fontSize: 10, fill: "#B91C1C" }} />
+                    <ReferenceLine y={moderateThreshold} stroke="#F59E0B" strokeDasharray="4 3" label={{ value: "Moderate", fontSize: 10, fill: "#B45309" }} />
+                    <ReferenceLine y={highThreshold} stroke="#EF4444" strokeDasharray="4 3" label={{ value: "High", fontSize: 10, fill: "#B91C1C" }} />
                     <Line
                       type="monotone"
                       dataKey="value"
@@ -334,9 +315,9 @@ export default function TrendsPage() {
                 </ResponsiveContainer>
                 <div className="flex gap-3 mt-3 flex-wrap">
                   {[
-                    { label: "low",        color: "#00C896", text: "ต่ำ (<2 ppm)" },
-                    { label: "moderate",   color: "#F59E0B", text: "ปานกลาง (2-5 ppm)" },
-                    { label: "high",       color: "#EF4444", text: "สูง (>5 ppm)" },
+                    { label: "low",        color: "#00C896", text: `ต่ำ (<${moderateThreshold.toFixed(acUnit === "mV" ? 0 : 1)} ${acUnitLbl})` },
+                    { label: "moderate",   color: "#F59E0B", text: `ปานกลาง (${moderateThreshold.toFixed(acUnit === "mV" ? 0 : 1)}-${highThreshold.toFixed(acUnit === "mV" ? 0 : 1)} ${acUnitLbl})` },
+                    { label: "high",       color: "#EF4444", text: `สูง (>${highThreshold.toFixed(acUnit === "mV" ? 0 : 1)} ${acUnitLbl})` },
                     { label: "unreliable", color: "#9CA3AF", text: "ไม่น่าเชื่อถือ" },
                   ].map(({ label, color, text }) => (
                     <div key={label} className="flex items-center gap-1.5 text-xs text-muted">
@@ -346,6 +327,76 @@ export default function TrendsPage() {
                   ))}
                 </div>
               </>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Daily stats table */}
+      {effectiveDevice && (
+        <Card>
+          <CardContent className="pt-5">
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <h2 className="font-semibold text-charcoal-500 tracking-tight">สรุปรายวัน</h2>
+                <p className="text-xs text-muted mt-0.5">
+                  {days === 1 ? "วันนี้" : `${days} วันล่าสุด`} · หน่วย acetone: {acUnitLbl}
+                </p>
+              </div>
+              {(dailyStats?.length ?? 0) > 0 && (
+                <Badge variant="mint">
+                  รวม {dailyStats!.reduce((s, d) => s + d.count, 0)} ครั้ง
+                </Badge>
+              )}
+            </div>
+            {(dailyStats?.length ?? 0) === 0 && (
+              <EmptyChart label="ยังไม่มีการเป่าในช่วงนี้" />
+            )}
+            {(dailyStats?.length ?? 0) > 0 && (
+              <div className="overflow-x-auto -mx-4 px-4">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b border-border-soft text-muted">
+                      <th className="text-left  py-2 font-semibold">วันที่</th>
+                      <th className="text-right py-2 font-semibold">ครั้ง</th>
+                      <th className="text-right py-2 font-semibold">เฉลี่ย</th>
+                      <th className="text-right py-2 font-semibold">สูงสุด</th>
+                      <th className="text-right py-2 font-semibold">อุณหภูมิ</th>
+                      <th className="text-right py-2 font-semibold">ความชื้น</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {dailyStats!.map((d) => {
+                    const avg = d.avg_acetone_delta;
+                    const max = d.max_acetone_delta;
+                    const zoneColor = ACETONE_ZONE_COLOR[d.dominant_label ?? "unreliable"] ?? "#9CA3AF";
+                    return (
+                        <tr key={d.date} className="border-b border-border-soft/60 hover:bg-surface-2 transition-colors">
+                          <td className="py-2.5 text-charcoal-500 font-medium">
+                            <div className="flex items-center gap-1.5">
+                              <span className="h-2 w-2 rounded-full shrink-0" style={{ background: zoneColor }} />
+                              {new Date(d.date).toLocaleDateString(dateLocale, { day: "numeric", month: "short" })}
+                            </div>
+                          </td>
+                          <td className="py-2.5 text-right text-charcoal-500 font-mono">{d.count}</td>
+                          <td className="py-2.5 text-right text-charcoal-500 font-mono font-semibold">
+                            {avg != null ? convertFromMv(avg, acUnit).toFixed(acDecimals) : "—"}
+                          </td>
+                          <td className="py-2.5 text-right text-muted font-mono">
+                            {max != null ? convertFromMv(max, acUnit).toFixed(acDecimals) : "—"}
+                          </td>
+                          <td className="py-2.5 text-right text-muted font-mono">
+                            {d.avg_temp_c != null ? `${d.avg_temp_c.toFixed(1)}°C` : "—"}
+                          </td>
+                          <td className="py-2.5 text-right text-muted font-mono">
+                            {d.avg_humidity_pct != null ? `${d.avg_humidity_pct.toFixed(0)}%` : "—"}
+                          </td>
+                        </tr>
+                    );
+                  })}
+                  </tbody>
+                </table>
+              </div>
             )}
           </CardContent>
         </Card>

@@ -5,11 +5,14 @@ import { Wind, X, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { AreaChart, Area, ResponsiveContainer, YAxis } from "recharts";
 import type { AcetoneLabel, LiveReading } from "@/lib/useDeviceStream";
+import { api } from "@/lib/api";
+import { useUnits } from "@/lib/units";
 
-const DURATION_MS = 10_000;
-const STORAGE_KEY = "breath-sessions";
-const MAX_STORED = 20;
-const MIN_SAMPLES = 3;
+const CALIBRATION_MS = 10_000;
+const RECORDING_MS   = 10_000;
+const STORAGE_KEY    = "breath-sessions";
+const MAX_STORED     = 20;
+const MIN_SAMPLES    = 2;
 
 export interface SessionSummary {
   id: string;
@@ -63,9 +66,43 @@ const LABEL_COLOR: Record<string, string> = {
   unreliable: "text-text-muted",
 };
 
-type Phase = "idle" | "counting" | "done";
+// ── Web Audio beeps ─────────────────────────────────────────────────────────
+// Single AudioContext, initialised on the START click (user gesture) so iOS
+// Safari doesn't reject it.
+let audioCtx: AudioContext | null = null;
 
-// Geometry for w-28 (112 px) progress ring
+function primeAudio() {
+  if (typeof window === "undefined") return;
+  if (!audioCtx) {
+    const AC = window.AudioContext ||
+      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (AC) audioCtx = new AC();
+  }
+  if (audioCtx?.state === "suspended") audioCtx.resume();
+}
+
+function beep(freq: number, durationMs: number, volume = 0.25) {
+  if (!audioCtx) return;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = "sine";
+  osc.frequency.value = freq;
+  const now = audioCtx.currentTime;
+  gain.gain.setValueAtTime(0.0001, now);
+  gain.gain.exponentialRampToValueAtTime(volume, now + 0.01);
+  gain.gain.exponentialRampToValueAtTime(0.0001, now + durationMs / 1000);
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+  osc.start(now);
+  osc.stop(now + durationMs / 1000);
+}
+
+const beepCountdown = () => beep(700, 120);          // 3-2-1 ticks
+const beepStart     = () => beep(1000, 300, 0.35);   // recording begins
+const beepEnd       = () => beep(600, 500, 0.3);     // recording done
+
+type Phase = "idle" | "calibrating" | "recording" | "done";
+
 const SZ = 112;
 const SW = 5;
 const RING_R = (SZ - SW) / 2;
@@ -74,12 +111,14 @@ const CIRC = 2 * Math.PI * RING_R;
 interface Props {
   liveReading: LiveReading | null;
   connected: boolean;
+  deviceId: string | null;
   onSessionSaved?: () => void;
 }
 
-export default function BreathSession({ liveReading, connected, onSessionSaved }: Props) {
+export default function BreathSession({ liveReading, connected, deviceId, onSessionSaved }: Props) {
+  const { format: fmtAcetone, label: unitLbl } = useUnits();
   const [phase, setPhase] = useState<Phase>("idle");
-  const [progress, setProgress] = useState(0);
+  const [progress, setProgress] = useState(0);   // 0-100 within current phase
   const [result, setResult] = useState<SessionSummary | null>(null);
   const [chartData, setChartData] = useState<{ t: number; mv: number }[]>([]);
 
@@ -87,45 +126,106 @@ export default function BreathSession({ liveReading, connected, onSessionSaved }
   const samplesRef = useRef<LiveReading[]>([]);
   const lastReading = useRef<LiveReading | null>(null);
   const rafId = useRef<number | null>(null);
+  const timerIds = useRef<number[]>([]);
+  // Session baseline = first sample's raw mv. All subsequent readings are
+  // shown relative to it so drift from boot-time firmware baseline cancels out.
+  const sessionBaseline = useRef<number | null>(null);
   const onSavedRef = useRef(onSessionSaved);
   useEffect(() => { onSavedRef.current = onSessionSaved; }, [onSessionSaved]);
 
-  // Accumulate samples while counting + push to chart
+  function clearScheduled() {
+    timerIds.current.forEach((id) => window.clearTimeout(id));
+    timerIds.current = [];
+    if (rafId.current) {
+      cancelAnimationFrame(rafId.current);
+      rafId.current = null;
+    }
+  }
+
+  // Collect samples only during the recording phase (normalised to session baseline).
   useEffect(() => {
-    if (phase !== "counting" || !liveReading || liveReading === lastReading.current) return;
+    if (phase !== "recording" || !liveReading || liveReading === lastReading.current) return;
     lastReading.current = liveReading;
+    if (sessionBaseline.current === null) {
+      sessionBaseline.current = liveReading.acetone_delta_mv;
+    }
     samplesRef.current.push(liveReading);
-    setChartData(prev => [...prev, { t: prev.length, mv: liveReading.acetone_delta_mv }]);
+    const normMv = liveReading.acetone_delta_mv - (sessionBaseline.current ?? 0);
+    setChartData((prev) => [...prev, { t: prev.length, mv: normMv }]);
   }, [liveReading, phase]);
 
-  // RAF loop — smooth progress, triggers finalize at 100 %
+  // Calibration phase — 10 s countdown, 3-2-1 beeps, transition to recording
   useEffect(() => {
-    if (phase !== "counting") return;
+    if (phase !== "calibrating") return;
+
+    t0.current = Date.now();
+    setProgress(0);
+
+    timerIds.current.push(window.setTimeout(beepCountdown, CALIBRATION_MS - 3000));
+    timerIds.current.push(window.setTimeout(beepCountdown, CALIBRATION_MS - 2000));
+    timerIds.current.push(window.setTimeout(beepCountdown, CALIBRATION_MS - 1000));
 
     const tick = () => {
-      const p = Math.min(100, ((Date.now() - t0.current) / DURATION_MS) * 100);
+      const p = Math.min(100, ((Date.now() - t0.current) / CALIBRATION_MS) * 100);
       setProgress(p);
-
       if (p >= 100) {
+        beepStart();
+        setPhase("recording");
+        return;
+      }
+      rafId.current = requestAnimationFrame(tick);
+    };
+    rafId.current = requestAnimationFrame(tick);
+
+    return clearScheduled;
+  }, [phase]);
+
+  // Recording phase — startRecording API, 10 s capture, endBeep, stopRecording
+  useEffect(() => {
+    if (phase !== "recording") return;
+
+    t0.current = Date.now();
+    samplesRef.current = [];
+    lastReading.current = null;
+    sessionBaseline.current = null;
+    setChartData([]);
+    setProgress(0);
+
+    if (deviceId) {
+      api.sensor.startRecording(deviceId).catch(() => {
+        toast.error("เริ่ม session ไม่สำเร็จ");
+      });
+    }
+
+    const tick = () => {
+      const p = Math.min(100, ((Date.now() - t0.current) / RECORDING_MS) * 100);
+      setProgress(p);
+      if (p >= 100) {
+        beepEnd();
         finalize();
         return;
       }
       rafId.current = requestAnimationFrame(tick);
     };
-
     rafId.current = requestAnimationFrame(tick);
-    return () => { if (rafId.current) cancelAnimationFrame(rafId.current); };
-  }, [phase]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  function finalize() {
+    return clearScheduled;
+  }, [phase, deviceId]);   // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function finalize() {
+    if (deviceId) {
+      try { await api.sensor.stopRecording(deviceId); } catch { /* non-critical */ }
+    }
     const s = samplesRef.current;
     if (s.length < MIN_SAMPLES) {
       toast.error("ข้อมูลไม่เพียงพอ — ลองเป่าใหม่", { description: `ได้รับเพียง ${s.length} ตัวอย่าง` });
-      reset();
+      resetToIdle();
       return;
     }
-
-    const mvs = s.map((r) => r.acetone_delta_mv);
+    // Normalise to the session baseline (first sample) so the peak/mean reflect
+    // the rise above ambient, not absolute values relative to the boot-time baseline.
+    const base = sessionBaseline.current ?? s[0].acetone_delta_mv;
+    const mvs = s.map((r) => r.acetone_delta_mv - base);
     const pressures = s.map((r) => r.pressure_kpa).filter((v): v is number => v != null);
     const qualities = s.map((r) => r.quality_score);
 
@@ -141,7 +241,6 @@ export default function BreathSession({ liveReading, connected, onSessionSaved }
       quality_score: qualities.reduce((a, b) => a + b, 0) / qualities.length,
       label: modeLabel(s),
     };
-
     persist(summary);
     setResult(summary);
     setPhase("done");
@@ -149,33 +248,48 @@ export default function BreathSession({ liveReading, connected, onSessionSaved }
     onSavedRef.current?.();
   }
 
-  function start() {
+  async function start() {
     if (!connected) {
       toast.error("กรุณาเชื่อมต่ออุปกรณ์ก่อนเริ่มตรวจ", {
         action: { label: "ไปที่ Device", onClick: () => { window.location.href = "/me/device"; } },
       });
       return;
     }
-    samplesRef.current = [];
-    lastReading.current = null;
-    t0.current = Date.now();
-    setProgress(0);
-    setChartData([]);
-    setPhase("counting");
+    if (!deviceId) {
+      toast.error("ไม่พบอุปกรณ์");
+      return;
+    }
+    primeAudio();  // must run on user gesture (iOS Safari)
+    setPhase("calibrating");
   }
 
-  function reset() {
-    if (rafId.current) cancelAnimationFrame(rafId.current);
+  function resetToIdle() {
+    clearScheduled();
     setPhase("idle");
     setProgress(0);
     setResult(null);
     setChartData([]);
     samplesRef.current = [];
+    lastReading.current = null;
   }
 
-  const secsLeft = Math.ceil(DURATION_MS / 1000 * (1 - progress / 100));
+  async function reset() {
+    clearScheduled();
+    if (deviceId && phase === "recording") {
+      try { await api.sensor.stopRecording(deviceId); } catch { /* ignore */ }
+    }
+    resetToIdle();
+  }
+
+  const durMs = phase === "recording" ? RECORDING_MS : CALIBRATION_MS;
+  const secsLeft = Math.ceil(durMs / 1000 * (1 - progress / 100));
   const dashOffset = CIRC * (1 - progress / 100);
-  const liveMv = liveReading?.acetone_delta_mv ?? 0;
+  // Live display is normalised to session baseline (first sample) so the number
+  // tracks the same shape as the waveform, not raw drift-affected delta.
+  const rawLive = liveReading?.acetone_delta_mv ?? 0;
+  const liveMv = phase === "recording" && sessionBaseline.current !== null
+    ? rawLive - sessionBaseline.current
+    : rawLive;
 
   /* ── idle ── */
   if (phase === "idle") {
@@ -201,8 +315,47 @@ export default function BreathSession({ liveReading, connected, onSessionSaved }
     );
   }
 
-  /* ── counting ── */
-  if (phase === "counting") {
+  /* ── calibrating ── */
+  if (phase === "calibrating") {
+    const ringColor = "text-blue-400";
+    return (
+      <div className="flex flex-col items-center py-6 gap-4">
+        <div className="relative" style={{ width: SZ, height: SZ }}>
+          <svg width={SZ} height={SZ} className="rotate-[-90deg]">
+            <circle cx={SZ/2} cy={SZ/2} r={RING_R} fill="none" stroke="currentColor" className="text-blue-500/20" strokeWidth={SW} />
+            <circle
+              cx={SZ/2} cy={SZ/2} r={RING_R}
+              fill="none" stroke="currentColor" className={ringColor}
+              strokeWidth={SW} strokeLinecap="round"
+              strokeDasharray={CIRC} strokeDashoffset={dashOffset}
+            />
+          </svg>
+          <div className="absolute inset-0 flex flex-col items-center justify-center">
+            <span className="text-3xl font-bold text-blue-400 leading-none">{secsLeft}</span>
+            <span className="text-[10px] text-text-muted mt-1 uppercase tracking-widest">Calibrate</span>
+          </div>
+        </div>
+
+        <div className="text-center">
+          <p className="text-sm font-medium text-text-primary">กำลังคาลิเบต</p>
+          <p className="text-xs text-text-muted mt-1">
+            {secsLeft <= 3 ? "เตรียมเป่า..." : "ถืออุปกรณ์นิ่งๆ"}
+          </p>
+        </div>
+
+        <button
+          onClick={reset}
+          className="flex items-center gap-1.5 text-xs text-text-muted hover:text-text-primary transition-colors"
+        >
+          <X size={12} />
+          ยกเลิก
+        </button>
+      </div>
+    );
+  }
+
+  /* ── recording ── */
+  if (phase === "recording") {
     const mvVals = chartData.map(d => d.mv);
     const yMin = mvVals.length > 1 ? Math.min(...mvVals) - 5 : 0;
     const yMax = mvVals.length > 1 ? Math.max(...mvVals) + 5 : 50;
@@ -211,38 +364,29 @@ export default function BreathSession({ liveReading, connected, onSessionSaved }
       <div className="flex flex-col items-center py-6 gap-4">
         <div className="relative" style={{ width: SZ, height: SZ }}>
           <svg width={SZ} height={SZ} className="rotate-[-90deg]">
+            <circle cx={SZ/2} cy={SZ/2} r={RING_R} fill="none" stroke="currentColor" className="text-mint-500/20" strokeWidth={SW} />
             <circle
-              cx={SZ / 2} cy={SZ / 2} r={RING_R}
-              fill="none" stroke="currentColor"
-              className="text-mint-500/20"
-              strokeWidth={SW}
-            />
-            <circle
-              cx={SZ / 2} cy={SZ / 2} r={RING_R}
-              fill="none" stroke="currentColor"
-              className="text-mint-500"
-              strokeWidth={SW}
-              strokeLinecap="round"
-              strokeDasharray={CIRC}
-              strokeDashoffset={dashOffset}
+              cx={SZ/2} cy={SZ/2} r={RING_R}
+              fill="none" stroke="currentColor" className="text-mint-500"
+              strokeWidth={SW} strokeLinecap="round"
+              strokeDasharray={CIRC} strokeDashoffset={dashOffset}
             />
           </svg>
           <div className="absolute inset-0 flex flex-col items-center justify-center">
             <span className="text-3xl font-bold text-mint-500 leading-none">{secsLeft}</span>
-            <span className="text-[11px] text-text-muted mt-1">{liveMv.toFixed(0)} mV</span>
+            <span className="text-[10px] text-text-muted mt-1">{fmtAcetone(liveMv)} {unitLbl}</span>
           </div>
         </div>
 
-        <p className="text-sm font-medium text-text-primary">เป่าออกยาวๆ ค้างไว้</p>
+        <p className="text-sm font-semibold text-mint-500">เป่าออกยาวๆ ค้างไว้</p>
 
-        {/* Live waveform */}
         <div className="w-full rounded-2xl bg-bg-elevated overflow-hidden" style={{ height: 96 }}>
           {chartData.length > 1 ? (
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={chartData} margin={{ top: 8, right: 0, left: 0, bottom: 0 }}>
                 <defs>
                   <linearGradient id="breathGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#00C896" stopOpacity={0.35} />
+                    <stop offset="5%"  stopColor="#00C896" stopOpacity={0.35} />
                     <stop offset="95%" stopColor="#00C896" stopOpacity={0} />
                   </linearGradient>
                 </defs>
@@ -292,8 +436,8 @@ export default function BreathSession({ liveReading, connected, onSessionSaved }
         <div className="grid grid-cols-3 gap-2">
           {(
             [
-              { val: result.peak_mv.toFixed(0), label: "Peak (mV)" },
-              { val: result.mean_mv.toFixed(0), label: "Mean (mV)" },
+              { val: fmtAcetone(result.peak_mv),  label: `Peak (${unitLbl})` },
+              { val: fmtAcetone(result.mean_mv),  label: `Mean (${unitLbl})` },
               { val: result.quality_score?.toFixed(0) ?? "—", label: "Quality" },
             ] as const
           ).map(({ val, label }) => (
@@ -324,6 +468,7 @@ export default function BreathSession({ liveReading, connected, onSessionSaved }
 
 /* ── Recent sessions list (reads from localStorage) ── */
 export function RecentBreathSessions({ sessions }: { sessions: SessionSummary[] }) {
+  const { format: fmt, label: unitLbl } = useUnits();
   return (
     <div>
       <p className="text-xs text-text-muted font-semibold uppercase tracking-widest mb-3">
@@ -351,14 +496,13 @@ export function RecentBreathSessions({ sessions }: { sessions: SessionSummary[] 
                 </div>
                 <div className="flex-1">
                   <p className="text-sm font-semibold text-text-primary">
-                    {s.peak_mv.toFixed(0)} mV
+                    {fmt(s.peak_mv)} {unitLbl}
                   </p>
                   <p className="text-xs text-text-muted mt-0.5">
-                    mean {s.mean_mv.toFixed(0)} mV
-                    {s.pressure_mean_kpa != null && ` · ${s.pressure_mean_kpa.toFixed(2)} kPa`}
+                    Mean {fmt(s.mean_mv)} · Q{s.quality_score?.toFixed(0) ?? "—"} · {s.n_samples} samples
                   </p>
                 </div>
-                <span className={`text-xs font-semibold ${lColor}`}>{lText}</span>
+                <span className={`text-xs font-bold ${lColor}`}>{lText}</span>
               </div>
             );
           })}

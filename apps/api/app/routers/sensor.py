@@ -2,8 +2,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
 from sqlmodel import select
+from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncSession
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date as _date
 from pathlib import Path
 from typing import List, Optional
 from uuid import UUID
@@ -31,6 +32,25 @@ from app.models.health import DeviceSession
 from app.core.security import create_access_token
 
 router = APIRouter(prefix="/sensor", tags=["sensor"])
+
+
+# ─── Access helpers ─────────────────────────────────────────────────────────
+
+async def _get_accessible_device(
+    device_id: UUID, user: User, db: AsyncSession
+) -> Optional[Device]:
+    """Return device if the user owns it OR has an active claim on it (shared pool)."""
+    result = await db.exec(select(Device).where(Device.id == device_id))
+    device = result.first()
+    if not device:
+        return None
+    if device.user_id == user.id:
+        return device
+    if device.is_shared:
+        session = await get_active_session(device_id, db)
+        if session and session.user_id == user.id:
+            return device
+    return None
 
 
 # ─── BLE Provisioning token ───────────────────────────────────────────────────
@@ -132,8 +152,30 @@ async def pair_device(
 
 @router.get("/devices", response_model=List[DeviceOut])
 async def list_devices(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    result = await db.exec(select(Device).where(Device.user_id == user.id))
+    result = await db.exec(
+        select(Device).where(Device.user_id == user.id, Device.active == True)  # noqa: E712
+        .order_by(Device.created_at.desc())
+    )
     return result.all()
+
+
+@router.delete("/device/{device_id}", status_code=204)
+async def unlink_device(
+    device_id: UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Soft-delete the caller's owned device so they can pick a shared one."""
+    result = await db.exec(
+        select(Device).where(Device.id == device_id, Device.user_id == user.id)
+    )
+    device = result.first()
+    if not device:
+        raise HTTPException(404, "Device not found or not owned by user")
+    device.active = False
+    db.add(device)
+    await db.commit()
+    return None
 
 
 # ─── Shared device pool (session-based multi-user access) ────────────────────
@@ -163,13 +205,28 @@ async def list_shared_devices(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """All is_shared=True devices, with their current active claimer (if any)."""
+    """All is_shared=True devices, with their current active claimer (if any).
+
+    Filter out ghosts: only include devices whose ESP32 has been publishing
+    recently (heartbeat present in Redis) OR that have a MAC-shaped mqtt_topic.
+    This hides orphan UUID-based dev records that no physical device maps to.
+    """
+    import redis.asyncio as aioredis
+    from app.core.config import settings as _s
+    r = aioredis.from_url(_s.CELERY_BROKER_URL, decode_responses=True)
+
     devices_result = await db.exec(
         select(Device).where(Device.is_shared == True, Device.active == True)  # noqa: E712
     )
     devices = list(devices_result.all())
     out: List[SharedDeviceOut] = []
     for d in devices:
+        # Skip orphan devices: no live heartbeat AND no MAC-format topic
+        mac = _device_mac_from_topic(d)
+        has_heartbeat = bool(await r.exists(f"heartbeat:{mac}")) if mac else False
+        is_mac_topic = bool(mac and len(mac) == 12 and all(c in "0123456789ABCDEFabcdef" for c in mac))
+        if not has_heartbeat and not is_mac_topic:
+            continue
         session = await get_active_session(d.id, db)
         claimer_username: Optional[str] = None
         if session:
@@ -196,6 +253,7 @@ async def list_shared_devices(
             claimed_by_me=bool(session and session.user_id == user.id),
             session_expires_at=session.expires_at if session else None,
         ))
+    await r.aclose()
     return out
 
 
@@ -344,22 +402,210 @@ async def ingest_reading(
 async def get_readings(
     device_id: UUID = Query(...),
     days: int = Query(default=7, ge=1, le=90),
+    limit: int = Query(default=0, ge=0, le=10000),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    device_result = await db.exec(
-        select(Device).where(Device.id == device_id, Device.user_id == user.id)
-    )
-    if not device_result.first():
+    if not await _get_accessible_device(device_id, user, db):
         raise HTTPException(status_code=404, detail="Device not found")
 
     since = datetime.utcnow() - timedelta(days=days)
+    if limit > 0:
+        # Fetch newest N, then flip to ascending so callers still get chronological order.
+        q = (
+            select(SensorReading)
+            .where(
+                SensorReading.device_id == device_id,
+                SensorReading.user_id == user.id,
+                SensorReading.time >= since,
+            )
+            .order_by(SensorReading.time.desc())
+            .limit(limit)
+        )
+        rows = (await db.exec(q)).all()
+        return list(reversed(rows))
     result = await db.exec(
         select(SensorReading)
-        .where(SensorReading.device_id == device_id, SensorReading.time >= since)
+        .where(
+            SensorReading.device_id == device_id,
+            SensorReading.user_id == user.id,
+            SensorReading.time >= since,
+        )
         .order_by(SensorReading.time)
     )
     return result.all()
+
+
+# ─── Session summaries (one row per "เป่า") ────────────────────────────────
+
+class SessionSummary(BaseModel):
+    session_id: str
+    started_at: datetime
+    ended_at: datetime
+    duration_seconds: float
+    n_samples: int
+    peak_acetone_delta: Optional[float]   # mV (raw, may be < 0 pre-clip)
+    mean_acetone_delta: Optional[float]
+    avg_pressure_kpa: Optional[float]
+    avg_temp_c: Optional[float]
+    avg_humidity_pct: Optional[float]
+    dominant_label: Optional[str]
+
+
+@router.get("/sessions", response_model=List[SessionSummary])
+async def list_sessions(
+    days: int = Query(default=7, ge=1, le=365),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """One row per recording session (grouped by session_id)."""
+    since = datetime.utcnow() - timedelta(days=days)
+
+    rows = (await db.exec(
+        select(
+            SensorReading.session_id.label("sid"),
+            func.min(SensorReading.time).label("started"),
+            func.max(SensorReading.time).label("ended"),
+            func.count().label("n"),
+            func.max(SensorReading.acetone_delta).label("peak_ac"),
+            func.avg(SensorReading.acetone_delta).label("avg_ac"),
+            func.avg(SensorReading.pressure_mean).label("avg_p"),
+            func.avg(SensorReading.temp_c).label("avg_t"),
+            func.avg(SensorReading.humidity_pct).label("avg_h"),
+        )
+        .where(
+            SensorReading.user_id == user.id,
+            SensorReading.session_id.is_not(None),
+            SensorReading.time >= since,
+        )
+        .group_by(SensorReading.session_id)
+        .order_by(func.min(SensorReading.time).desc())
+    )).all()
+
+    # Dominant label per session
+    label_rows = (await db.exec(
+        select(
+            SensorReading.session_id.label("sid"),
+            SensorReading.label,
+            func.count().label("n"),
+        )
+        .where(
+            SensorReading.user_id == user.id,
+            SensorReading.session_id.is_not(None),
+            SensorReading.time >= since,
+            SensorReading.label.is_not(None),
+        )
+        .group_by(SensorReading.session_id, SensorReading.label)
+    )).all()
+
+    dominant: dict = {}
+    for sid, label, n in label_rows:
+        cur = dominant.get(sid)
+        if cur is None or n > cur[1]:
+            dominant[sid] = (label, n)
+
+    return [
+        SessionSummary(
+            session_id=r[0],
+            started_at=r[1],
+            ended_at=r[2],
+            duration_seconds=(r[2] - r[1]).total_seconds(),
+            n_samples=int(r[3]),
+            peak_acetone_delta=float(r[4]) if r[4] is not None else None,
+            mean_acetone_delta=float(r[5]) if r[5] is not None else None,
+            avg_pressure_kpa=float(r[6]) if r[6] is not None else None,
+            avg_temp_c=float(r[7]) if r[7] is not None else None,
+            avg_humidity_pct=float(r[8]) if r[8] is not None else None,
+            dominant_label=dominant.get(r[0], (None,))[0],
+        )
+        for r in rows
+    ]
+
+
+# ─── Daily aggregated stats ────────────────────────────────────────────────
+
+class DailyStat(BaseModel):
+    date: _date
+    count: int
+    avg_acetone_delta: Optional[float]
+    max_acetone_delta: Optional[float]
+    min_acetone_delta: Optional[float]
+    avg_temp_c: Optional[float]
+    avg_humidity_pct: Optional[float]
+    dominant_label: Optional[str]
+
+
+@router.get("/daily-stats", response_model=List[DailyStat])
+async def get_daily_stats(
+    device_id: UUID = Query(...),
+    days: int = Query(default=7, ge=1, le=90),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Per-day aggregate for the CURRENT user's readings on this device.
+    Shared-device semantics: each user sees their own recordings only.
+    """
+    if not await _get_accessible_device(device_id, user, db):
+        raise HTTPException(status_code=404, detail="Device not found")
+
+    since = datetime.utcnow() - timedelta(days=days)
+    day = func.date(SensorReading.time).label("day")
+
+    rows = (await db.exec(
+        select(
+            day,
+            func.count().label("count"),
+            func.avg(SensorReading.acetone_delta).label("avg_ac"),
+            func.max(SensorReading.acetone_delta).label("max_ac"),
+            func.min(SensorReading.acetone_delta).label("min_ac"),
+            func.avg(SensorReading.temp_c).label("avg_t"),
+            func.avg(SensorReading.humidity_pct).label("avg_h"),
+        )
+        .where(
+            SensorReading.device_id == device_id,
+            SensorReading.user_id == user.id,
+            SensorReading.time >= since,
+        )
+        .group_by(day)
+        .order_by(day.desc())
+    )).all()
+
+    # Dominant label per day (mode) — second cheap query
+    label_rows = (await db.exec(
+        select(
+            day,
+            SensorReading.label,
+            func.count().label("n"),
+        )
+        .where(
+            SensorReading.device_id == device_id,
+            SensorReading.user_id == user.id,
+            SensorReading.time >= since,
+            SensorReading.label.isnot(None),
+        )
+        .group_by(day, SensorReading.label)
+    )).all()
+
+    dominant: dict = {}
+    for d, label, n in label_rows:
+        cur = dominant.get(d)
+        if cur is None or n > cur[1]:
+            dominant[d] = (label, n)
+
+    return [
+        DailyStat(
+            date=r[0],
+            count=int(r[1]),
+            avg_acetone_delta=float(r[2]) if r[2] is not None else None,
+            max_acetone_delta=float(r[3]) if r[3] is not None else None,
+            min_acetone_delta=float(r[4]) if r[4] is not None else None,
+            avg_temp_c=float(r[5]) if r[5] is not None else None,
+            avg_humidity_pct=float(r[6]) if r[6] is not None else None,
+            dominant_label=dominant.get(r[0], (None,))[0],
+        )
+        for r in rows
+    ]
 
 
 # ─── Calibrate device ────────────────────────────────────────────────────────
@@ -564,3 +810,161 @@ async def generate_configured_firmware(
             "Cache-Control": "no-store",
         },
     )
+
+
+# ─── Remote WiFi reset ───────────────────────────────────────────────────────
+
+@router.post("/device/{device_id}/reset-wifi", status_code=202)
+async def reset_device_wifi(
+    device_id: UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Send WiFi reset command to device via MQTT.
+    Device will erase saved credentials, restart, and re-enter AP mode.
+    """
+    result = await db.exec(
+        select(Device).where(Device.id == device_id, Device.user_id == user.id)
+    )
+    device = result.first()
+    if not device:
+        raise HTTPException(404, "Device not found or not owned by user")
+
+    if not device.mqtt_topic:
+        raise HTTPException(400, "Device does not support remote commands")
+
+    # mqtt_topic format: metabreath/{MAC}/reading → extract MAC
+    mac = device.mqtt_topic.split("/")[1]
+
+    from app.services.mqtt_publisher import publish_device_command
+    cmd_id = await publish_device_command(mac, "reset_wifi")
+
+    return {"cmd_id": cmd_id, "status": "sent"}
+
+
+# ─── Recording session (gate for MQTT-triggered DB inserts) ──────────────────
+# Only readings arriving while a session is active are persisted.
+# TTL guards against orphaned sessions if the client forgets to stop.
+
+RECORDING_TTL_SECONDS = 15 * 60
+
+
+def _device_mac_from_topic(device: Device) -> Optional[str]:
+    if not device.mqtt_topic:
+        return None
+    parts = device.mqtt_topic.split("/")
+    return parts[1] if len(parts) >= 3 else None
+
+
+@router.post("/device/{device_id}/recording/start", status_code=201)
+async def start_recording(
+    device_id: UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Begin capturing MQTT readings to DB for this device."""
+    device = await _get_accessible_device(device_id, user, db)
+    if not device:
+        raise HTTPException(404, "Device not found or not owned by user")
+
+    mac = _device_mac_from_topic(device)
+    if not mac:
+        raise HTTPException(400, "Device has no MQTT topic assigned")
+
+    import redis.asyncio as aioredis
+    from app.core.config import settings
+    import re
+
+    # Compute next sequential number by inspecting existing session_ids
+    # matching this user's prefix. Cheap (indexed) even at scale.
+    username = (user.username or "user").lower()
+    safe_prefix = re.sub(r"[^a-z0-9]", "", username) or "user"
+    result = await db.exec(
+        select(SensorReading.session_id)
+        .where(
+            SensorReading.user_id == user.id,
+            SensorReading.session_id.is_not(None),
+            SensorReading.session_id.like(f"{safe_prefix}%"),
+        )
+    )
+    max_seq = 0
+    for row in result:
+        # row is the plain session_id string when only one column is selected
+        sid = row if isinstance(row, str) else (row[0] if row else "")
+        m = re.match(rf"^{re.escape(safe_prefix)}(\d+)$", sid)
+        if m:
+            max_seq = max(max_seq, int(m.group(1)))
+    session_id = f"{safe_prefix}{max_seq + 1}"
+
+    r = aioredis.from_url(settings.CELERY_BROKER_URL, decode_responses=True)
+    try:
+        await r.set(f"recording:{mac}", session_id, ex=RECORDING_TTL_SECONDS)
+    finally:
+        await r.aclose()
+
+    return {
+        "session_id": session_id,
+        "expires_in": RECORDING_TTL_SECONDS,
+    }
+
+
+@router.post("/device/{device_id}/recording/stop", status_code=200)
+async def stop_recording(
+    device_id: UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Stop capturing MQTT readings to DB."""
+    device = await _get_accessible_device(device_id, user, db)
+    if not device:
+        raise HTTPException(404, "Device not found or not owned by user")
+
+    mac = _device_mac_from_topic(device)
+    if not mac:
+        raise HTTPException(400, "Device has no MQTT topic assigned")
+
+    import redis.asyncio as aioredis
+    from app.core.config import settings
+
+    r = aioredis.from_url(settings.CELERY_BROKER_URL, decode_responses=True)
+    try:
+        deleted = await r.delete(f"recording:{mac}")
+    finally:
+        await r.aclose()
+
+    return {"stopped": bool(deleted)}
+
+
+@router.get("/device/{device_id}/recording/status")
+async def recording_status(
+    device_id: UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Check whether a recording session is currently active + device online status."""
+    device = await _get_accessible_device(device_id, user, db)
+    if not device:
+        raise HTTPException(404, "Device not found or not owned by user")
+
+    mac = _device_mac_from_topic(device)
+    if not mac:
+        return {"active": False, "online": False}
+
+    import redis.asyncio as aioredis
+    from app.core.config import settings
+
+    r = aioredis.from_url(settings.CELERY_BROKER_URL, decode_responses=True)
+    try:
+        session_id = await r.get(f"recording:{mac}")
+        ttl = await r.ttl(f"recording:{mac}") if session_id else -2
+        online = bool(await r.exists(f"heartbeat:{mac}"))
+    finally:
+        await r.aclose()
+
+    return {
+        "active": bool(session_id),
+        "session_id": session_id,
+        "ttl_seconds": ttl if ttl > 0 else None,
+        "online": online,
+    }

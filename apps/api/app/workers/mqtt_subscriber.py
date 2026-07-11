@@ -15,6 +15,7 @@ import os
 import signal
 from datetime import datetime
 from pathlib import Path
+from typing import Optional
 
 import aiomqtt
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
@@ -53,22 +54,55 @@ def _touch_heartbeat() -> None:
 
 
 async def process_reading(device_id_str: str, payload: dict):
-    """Run signal processing pipeline and persist to TimescaleDB."""
-    async with Session() as db:
-        try:
-            from uuid import UUID
-            device_uuid = UUID(device_id_str)
-        except ValueError:
-            log.warning("Invalid device_id in topic: %s", device_id_str)
+    """
+    Run signal processing pipeline and persist to TimescaleDB —
+    but ONLY when a recording session is active for this device.
+    A session is a Redis key `recording:{device_id_str}` set by the API.
+    """
+    # Heartbeat + gate: heartbeat lets the UI know the device is online
+    # even outside of a recording session; the gate skips the expensive
+    # save/publish path unless a session is active. Recording key value is the
+    # human-readable session_id (e.g. "sunbright1") shared by all readings in
+    # this session.
+    import redis.asyncio as aioredis
+    r = aioredis.from_url(settings.CELERY_BROKER_URL, decode_responses=True)
+    active_session_id: Optional[str] = None
+    try:
+        await r.set(f"heartbeat:{device_id_str}", "1", ex=60)
+        active_session_id = await r.get(f"recording:{device_id_str}")
+        if not active_session_id:
             return
+    finally:
+        await r.aclose()
 
-        device_result = await db.exec(
-            select(Device).where(Device.id == device_uuid, Device.active == True)
+    async with Session() as db:
+        # รองรับทั้ง UUID (เดิม) และ MAC address (ใหม่ เช่น 88F155302810)
+        device = None
+        full_topic = f"metabreath/{device_id_str}/reading"
+
+        # ลองหา device จาก mqtt_topic ก่อน (ใช้กับ MAC-based devices)
+        topic_result = await db.exec(
+            select(Device).where(Device.mqtt_topic == full_topic, Device.active == True)
         )
-        device = device_result.first()
+        device = topic_result.first()
+
+        # Fallback: ลอง parse เป็น UUID (devices เดิม)
+        if not device:
+            try:
+                from uuid import UUID
+                device_uuid = UUID(device_id_str)
+                uuid_result = await db.exec(
+                    select(Device).where(Device.id == device_uuid, Device.active == True)
+                )
+                device = uuid_result.first()
+            except ValueError:
+                pass
+
         if not device:
             log.warning("Unknown or inactive device: %s — skipping", device_id_str)
             return
+
+        device_uuid = device.id  # always use the DB id regardless of lookup path
 
         cal_result = await db.exec(
             select(DeviceCalibration)
@@ -133,6 +167,7 @@ async def process_reading(device_id_str: str, payload: dict):
             time=datetime.utcnow(),
             device_id=device_uuid,
             user_id=reading_user_id,
+            session_id=active_session_id,
             ambient_voc=baseline_voltage,
             breath_voc=sensor_voltage,
             acetone_delta=round(acetone_delta_mv, 4),
@@ -155,7 +190,7 @@ async def process_reading(device_id_str: str, payload: dict):
             import redis.asyncio as aioredis
             r = aioredis.from_url(settings.CELERY_BROKER_URL, decode_responses=True)
             ws_payload = json.dumps({
-                "device_id": device_id_str,
+                "device_id": str(device_uuid),
                 "time": reading.time.isoformat(),
                 "acetone_delta_mv": reading.acetone_delta,
                 "sensor_voltage": sensor_voltage,

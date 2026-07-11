@@ -3,7 +3,7 @@
 import { Suspense, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ArrowLeft, Cpu, Download, Loader2 } from "lucide-react";
+import { ArrowLeft, Cpu, Loader2, Wifi } from "lucide-react";
 import { api } from "@/lib/api";
 
 const MODELS = [
@@ -19,9 +19,9 @@ function AddDeviceInner() {
   async function createDevice() {
     setPairing(true);
     try {
-      const res = await api.sensor.pairDevice({ sensor_model: selectedModel });
-      toast.success("สร้างอุปกรณ์สำเร็จ — กรอก WiFi เพื่อดาวน์โหลด firmware");
-      router.replace(`/me/device/${res.device_id}/firmware`);
+      await api.sensor.pairDevice({ sensor_model: selectedModel });
+      toast.success("สร้างอุปกรณ์สำเร็จ");
+      router.replace("/me/device");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "เกิดข้อผิดพลาด");
       setPairing(false);
@@ -43,21 +43,21 @@ function AddDeviceInner() {
       {/* Flow explanation */}
       <div className="bg-bg-elevated rounded-2xl p-5 space-y-3">
         <div className="flex items-center gap-2">
-          <Cpu size={16} className="text-mint-500" strokeWidth={1.6} />
-          <p className="text-sm font-semibold text-text-primary">3 ขั้นง่ายๆ</p>
+          <Wifi size={16} className="text-mint-500" strokeWidth={1.6} />
+          <p className="text-sm font-semibold text-text-primary">3 ขั้นง่ายๆ — ไม่ต้องติดตั้ง software</p>
         </div>
         <ol className="space-y-2 text-xs text-text-muted leading-relaxed">
           <li className="flex gap-2">
             <span className="w-4 h-4 rounded-full bg-mint-500/20 text-mint-500 text-[10px] flex items-center justify-center shrink-0 mt-0.5 font-bold">1</span>
-            <span>สร้าง Device (server เก็บ ID + MQTT topic)</span>
+            <span>กด <strong className="text-text-primary">"สร้าง Device"</strong> — ระบบออก Device ID ให้ทันที</span>
           </li>
           <li className="flex gap-2">
             <span className="w-4 h-4 rounded-full bg-mint-500/20 text-mint-500 text-[10px] flex items-center justify-center shrink-0 mt-0.5 font-bold">2</span>
-            <span>กรอก WiFi → ดาวน์โหลด .ino ที่ config เสร็จให้แล้ว</span>
+            <span>เชื่อม WiFi <strong className="text-text-primary">MetaBreath-Setup-XXXX</strong> → เปิด 192.168.4.1</span>
           </li>
           <li className="flex gap-2">
             <span className="w-4 h-4 rounded-full bg-mint-500/20 text-mint-500 text-[10px] flex items-center justify-center shrink-0 mt-0.5 font-bold">3</span>
-            <span>Upload เข้า ESP32 ด้วย Arduino IDE → เสร็จ</span>
+            <span>วาง Device ID → เลือก WiFi บ้าน → กด Save → เสร็จ</span>
           </li>
         </ol>
       </div>
@@ -91,13 +91,9 @@ function AddDeviceInner() {
         {pairing ? (
           <><Loader2 size={16} className="animate-spin" /> กำลังสร้าง...</>
         ) : (
-          <><Download size={16} /> สร้าง Device + ดาวน์โหลด Firmware</>
+          <><Cpu size={16} /> สร้าง Device</>
         )}
       </button>
-
-      <p className="text-center text-xs text-text-muted">
-        ต้องการ Arduino IDE + สาย USB สำหรับ upload
-      </p>
     </div>
   );
 }

@@ -1,0 +1,519 @@
+#include <Wire.h>
+#include <WiFi.h>
+#include <PubSubClient.h>
+#include <ArduinoJson.h>
+
+// =======================================================
+// USER CONFIG — เปลี่ยน 4 ค่าด้านล่างก่อนใช้งาน
+// =======================================================
+#define WIFI_SSID       "YOUR_WIFI_NAME"
+#define WIFI_PASSWORD   "YOUR_WIFI_PASSWORD"
+
+// ได้จากหน้า /me/device/add → Pair device → คัดลอก Device ID
+#define DEVICE_ID       "2dea05c7-1083-464e-8e7c-11ceb3991ceb"
+
+// MQTT credentials — จาก .env / API /sensor/device/pair
+#define MQTT_BROKER     "metabreath.duckdns.org"
+#define MQTT_PORT       1883
+#define MQTT_USER       "esp32"
+#define MQTT_PASS       "0511182c23b48b7a07c274c2"
+
+// =======================================================
+// PIN CONFIG
+// =======================================================
+#define TGS1820_PIN 34
+#define PRESSURE_PIN 32
+
+#define SDA_PIN 21
+#define SCL_PIN 22
+
+// =======================================================
+// SHT31 CONFIG
+// =======================================================
+#define SHT31_ADDRESS 0x44
+
+// =======================================================
+// TGS1820 CONFIG
+// =======================================================
+const int TGS_SAMPLE_COUNT = 100;
+const int BASELINE_SECONDS = 10;
+
+float tgsBaselineVoltage = 0.0;
+
+// =======================================================
+// XGZP6847A PRESSURE CONFIG
+// =======================================================
+float PRESSURE_MIN_KPA = 0.0;
+float PRESSURE_MAX_KPA = 10.0;
+
+float ADC_MAX = 4095.0;
+float ESP32_ADC_VOLTAGE = 3.3;
+
+float SENSOR_SUPPLY_VOLTAGE = 3.3;
+float SENSOR_MIN_RATIO = 0.10;
+float SENSOR_MAX_RATIO = 0.90;
+
+int readingNumber = 1;
+
+// =======================================================
+// NETWORK GLOBALS (WiFi + MQTT layer)
+// =======================================================
+WiFiClient   wifiClient;
+PubSubClient mqttClient(wifiClient);
+
+char mqttTopic[128];
+char mqttClientId[64];
+
+// true = WiFi/MQTT configured; false = serial-only mode (no wasted retries)
+bool networkEnabled = false;
+
+// =======================================================
+// SETUP
+// =======================================================
+void setup() {
+  Serial.begin(115200);
+  delay(1000);
+
+  analogReadResolution(12);
+  analogSetPinAttenuation(TGS1820_PIN, ADC_11db);
+  analogSetPinAttenuation(PRESSURE_PIN, ADC_11db);
+
+  Wire.begin(SDA_PIN, SCL_PIN);
+
+  Serial.println();
+  Serial.println("==============================================");
+  Serial.println("        ESP32 SENSOR MONITOR SYSTEM");
+  Serial.println("        TGS1820 + XGZP6847A + SHT31");
+  Serial.println("==============================================");
+  Serial.println();
+
+  Serial.println("Calibrating TGS1820 baseline...");
+  Serial.println("Keep the TGS1820 sensor in clean air.");
+  Serial.println();
+
+  tgsBaselineVoltage = calibrateTGSBaseline();
+
+  Serial.println();
+  Serial.println("Calibration Finished");
+  Serial.print("TGS1820 Baseline Voltage: ");
+  Serial.print(tgsBaselineVoltage, 4);
+  Serial.println(" V");
+
+  // ---------------------------------------------------
+  // NETWORK LAYER — WiFi + MQTT
+  // Auto-detect: if WIFI_SSID or DEVICE_ID still placeholder → serial-only mode
+  // ---------------------------------------------------
+  networkEnabled = (strcmp(WIFI_SSID,  "YOUR_WIFI_NAME") != 0) &&
+                   (strcmp(DEVICE_ID,  "2dea05c7-1083-464e-8e7c-11ceb3991ceb") != 0 ||
+                    strlen(DEVICE_ID) == 36);  // any real 36-char UUID counts
+
+  if (networkEnabled) {
+    Serial.println();
+    Serial.println("[Mode] WiFi + MQTT enabled");
+
+    snprintf(mqttTopic,    sizeof(mqttTopic),    "metabreath/%s/reading", DEVICE_ID);
+    snprintf(mqttClientId, sizeof(mqttClientId), "metabreath-%s",         DEVICE_ID);
+
+    connectWiFi();
+    mqttClient.setServer(MQTT_BROKER, MQTT_PORT);
+    mqttClient.setBufferSize(512);
+    mqttClient.setKeepAlive(60);
+    connectMQTT();
+  } else {
+    Serial.println();
+    Serial.println("[Mode] Serial-only (WiFi not configured)");
+    Serial.println("       Fill in WIFI_SSID + DEVICE_ID at top of file to enable MQTT");
+  }
+
+  Serial.println();
+  Serial.println("Starting sensor readings...");
+  Serial.println("==============================================");
+}
+
+// =======================================================
+// LOOP
+// =======================================================
+void loop() {
+  // Keep MQTT alive (non-blocking) — auto-reconnect if dropped
+  if (networkEnabled) {
+    ensureNetwork();
+    mqttClient.loop();
+  }
+
+  // -------------------------------
+  // TGS1820
+  // -------------------------------
+  int tgsADC = readAverageADC(TGS1820_PIN, TGS_SAMPLE_COUNT);
+  float tgsVoltage = adcToVoltage(tgsADC);
+  float acetoneDelta_mV = (tgsVoltage - tgsBaselineVoltage) * 1000.0;
+
+  String tgsStatus;
+
+  if (tgsVoltage < 0.05) {
+    tgsStatus = "Sensor not connected";
+  } else {
+    tgsStatus = classifyAcetone(acetoneDelta_mV);
+  }
+
+  // -------------------------------
+  // PRESSURE SENSOR
+  // -------------------------------
+  int pressureADC = readAverageADC(PRESSURE_PIN, 50);
+  float pressureVoltage = adcToVoltage(pressureADC);
+
+  float pressureKPa = voltageToPressureKPa(pressureVoltage);
+  float pressurePa = pressureKPa * 1000.0;
+  float pressureBar = pressureKPa / 100.0;
+
+  String pressureStatus;
+
+  if (pressureVoltage < 0.05) {
+    pressureStatus = "Sensor not connected";
+  } else {
+    pressureStatus = "OK";
+  }
+
+  // -------------------------------
+  // SHT31
+  // -------------------------------
+  float temperature = 0.0;
+  float humidity = 0.0;
+  bool shtOK = readSHT31(temperature, humidity);
+
+  // -------------------------------
+  // DISPLAY IN SERIAL MONITOR
+  // -------------------------------
+  Serial.println();
+  Serial.println("==============================================");
+  Serial.print("Reading No. ");
+  Serial.print(readingNumber);
+  Serial.print("     Time: ");
+  Serial.print(millis() / 1000);
+  Serial.println(" seconds");
+  Serial.println("==============================================");
+
+  Serial.println();
+
+  Serial.println("TGS1820 ACETONE / VOC SENSOR");
+  Serial.println("----------------------------------------------");
+  Serial.print("Raw ADC Value      : ");
+  Serial.println(tgsADC);
+
+  Serial.print("Sensor Voltage     : ");
+  Serial.print(tgsVoltage, 4);
+  Serial.println(" V");
+
+  Serial.print("Baseline Voltage   : ");
+  Serial.print(tgsBaselineVoltage, 4);
+  Serial.println(" V");
+
+  Serial.print("Acetone Delta      : ");
+  Serial.print(acetoneDelta_mV, 2);
+  Serial.println(" mV");
+
+  Serial.print("Gas Status         : ");
+  Serial.println(tgsStatus);
+
+  Serial.println();
+
+  Serial.println("XGZP6847A PRESSURE SENSOR");
+  Serial.println("----------------------------------------------");
+  Serial.print("Raw ADC Value      : ");
+  Serial.println(pressureADC);
+
+  Serial.print("Sensor Voltage     : ");
+  Serial.print(pressureVoltage, 4);
+  Serial.println(" V");
+
+  Serial.print("Pressure           : ");
+  Serial.print(pressureKPa, 3);
+  Serial.println(" kPa");
+
+  Serial.print("Pressure           : ");
+  Serial.print(pressurePa, 2);
+  Serial.println(" Pa");
+
+  Serial.print("Pressure           : ");
+  Serial.print(pressureBar, 5);
+  Serial.println(" bar");
+
+  Serial.print("Pressure Status    : ");
+  Serial.println(pressureStatus);
+
+  Serial.println();
+
+  Serial.println("SHT31 TEMPERATURE / HUMIDITY SENSOR");
+  Serial.println("----------------------------------------------");
+
+  if (shtOK) {
+    Serial.print("Temperature        : ");
+    Serial.print(temperature, 2);
+    Serial.println(" °C");
+
+    Serial.print("Humidity           : ");
+    Serial.print(humidity, 2);
+    Serial.println(" %");
+
+    Serial.println("SHT31 Status       : OK");
+  } else {
+    Serial.println("Temperature        : Failed");
+    Serial.println("Humidity           : Failed");
+    Serial.println("SHT31 Status       : Check wiring or I2C address");
+  }
+
+  Serial.println();
+  Serial.println("SYSTEM SUMMARY");
+  Serial.println("----------------------------------------------");
+
+  if (tgsVoltage < 0.05) {
+    Serial.println("TGS1820            : CHECK SENSOR");
+  } else {
+    Serial.println("TGS1820            : OK");
+  }
+
+  Serial.print("Pressure Sensor    : ");
+  Serial.println(pressureStatus);
+
+  if (shtOK) {
+    Serial.println("SHT31              : OK");
+  } else {
+    Serial.println("SHT31              : CHECK SENSOR");
+  }
+
+  Serial.print("Network            : ");
+  if (!networkEnabled) {
+    Serial.println("SERIAL-ONLY MODE");
+  } else {
+    Serial.print("WiFi=");
+    Serial.print(WiFi.isConnected() ? "OK" : "DOWN");
+    Serial.print("  MQTT=");
+    Serial.println(mqttClient.connected() ? "OK" : "DOWN");
+  }
+
+  Serial.println("==============================================");
+
+  // -------------------------------
+  // PUBLISH TO MQTT (skip cleanly in serial-only mode)
+  // -------------------------------
+  if (networkEnabled) {
+    publishReading(tgsVoltage, tgsBaselineVoltage, acetoneDelta_mV,
+                   pressureKPa, temperature, humidity, shtOK);
+  }
+
+  readingNumber++;
+
+  delay(3000);
+}
+
+// =======================================================
+// ADC FUNCTIONS
+// =======================================================
+int readAverageADC(int pin, int sampleCount) {
+  long sum = 0;
+
+  for (int i = 0; i < sampleCount; i++) {
+    sum += analogRead(pin);
+    delay(5);
+  }
+
+  return sum / sampleCount;
+}
+
+float adcToVoltage(int adcValue) {
+  return adcValue * ESP32_ADC_VOLTAGE / ADC_MAX;
+}
+
+// =======================================================
+// TGS1820 FUNCTIONS
+// =======================================================
+float calibrateTGSBaseline() {
+  float sumVoltage = 0;
+
+  for (int i = 0; i < BASELINE_SECONDS; i++) {
+    int adcValue = readAverageADC(TGS1820_PIN, TGS_SAMPLE_COUNT);
+    float voltage = adcToVoltage(adcValue);
+
+    sumVoltage += voltage;
+
+    Serial.print("Baseline sample ");
+    Serial.print(i + 1);
+    Serial.print("/");
+    Serial.print(BASELINE_SECONDS);
+    Serial.print(" | ADC: ");
+    Serial.print(adcValue);
+    Serial.print(" | Voltage: ");
+    Serial.print(voltage, 4);
+    Serial.println(" V");
+
+    delay(1000);
+  }
+
+  return sumVoltage / BASELINE_SECONDS;
+}
+
+String classifyAcetone(float delta_mV) {
+  if (delta_mV < 5) {
+    return "Clean Air";
+  } else if (delta_mV < 30) {
+    return "Low";
+  } else if (delta_mV < 80) {
+    return "Moderate";
+  } else {
+    return "High";
+  }
+}
+
+// =======================================================
+// PRESSURE CONVERSION
+// =======================================================
+float voltageToPressureKPa(float voltage) {
+  float sensorMinVoltage = SENSOR_SUPPLY_VOLTAGE * SENSOR_MIN_RATIO;
+  float sensorMaxVoltage = SENSOR_SUPPLY_VOLTAGE * SENSOR_MAX_RATIO;
+
+  float pressure = (voltage - sensorMinVoltage) *
+                   (PRESSURE_MAX_KPA - PRESSURE_MIN_KPA) /
+                   (sensorMaxVoltage - sensorMinVoltage) +
+                   PRESSURE_MIN_KPA;
+
+  // Clamp to sensor range: voltage below 10% ratio (e.g. sensor unplugged)
+  // would otherwise produce negative kPa that gets stored in the DB as-is
+  if (pressure < PRESSURE_MIN_KPA) pressure = PRESSURE_MIN_KPA;
+  if (pressure > PRESSURE_MAX_KPA) pressure = PRESSURE_MAX_KPA;
+
+  return pressure;
+}
+
+// =======================================================
+// SHT31 FUNCTION
+// =======================================================
+bool readSHT31(float &temperature, float &humidity) {
+  Wire.beginTransmission(SHT31_ADDRESS);
+
+  Wire.write(0x24);
+  Wire.write(0x00);
+
+  if (Wire.endTransmission() != 0) {
+    return false;
+  }
+
+  delay(20);
+
+  Wire.requestFrom(SHT31_ADDRESS, 6);
+
+  if (Wire.available() != 6) {
+    return false;
+  }
+
+  uint16_t rawTemp = Wire.read() << 8;
+  rawTemp |= Wire.read();
+  Wire.read();
+
+  uint16_t rawHum = Wire.read() << 8;
+  rawHum |= Wire.read();
+  Wire.read();
+
+  temperature = -45.0 + 175.0 * ((float)rawTemp / 65535.0);
+  humidity = 100.0 * ((float)rawHum / 65535.0);
+
+  return true;
+}
+
+// =======================================================
+// NETWORK LAYER — WiFi + MQTT
+// =======================================================
+void connectWiFi() {
+  if (WiFi.isConnected()) return;
+
+  Serial.println();
+  Serial.print("[WiFi] Connecting to ");
+  Serial.println(WIFI_SSID);
+
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+
+  unsigned long start = millis();
+  while (WiFi.status() != WL_CONNECTED && (millis() - start) < 20000) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println();
+
+  if (WiFi.isConnected()) {
+    Serial.print("[WiFi] Connected: ");
+    Serial.println(WiFi.localIP());
+  } else {
+    Serial.println("[WiFi] FAILED — will retry every publish cycle");
+  }
+}
+
+void connectMQTT() {
+  if (!WiFi.isConnected()) return;
+  if (mqttClient.connected()) return;
+
+  Serial.print("[MQTT] Connecting to ");
+  Serial.print(MQTT_BROKER);
+  Serial.print(":");
+  Serial.print(MQTT_PORT);
+  Serial.print(" as ");
+  Serial.println(MQTT_USER);
+
+  if (mqttClient.connect(mqttClientId, MQTT_USER, MQTT_PASS)) {
+    Serial.println("[MQTT] Connected");
+    Serial.print("[MQTT] Publishing to: ");
+    Serial.println(mqttTopic);
+  } else {
+    Serial.print("[MQTT] Failed rc=");
+    Serial.println(mqttClient.state());
+  }
+}
+
+void ensureNetwork() {
+  if (!WiFi.isConnected()) {
+    Serial.println("[Net] WiFi dropped — reconnecting");
+    connectWiFi();
+  }
+  if (WiFi.isConnected() && !mqttClient.connected()) {
+    Serial.println("[Net] MQTT dropped — reconnecting");
+    connectMQTT();
+  }
+}
+
+void publishReading(float sensorVoltage,
+                    float baselineVoltage,
+                    float acetoneDeltaMV,
+                    float pressureKPa,
+                    float temperature,
+                    float humidity,
+                    bool  shtOK) {
+  if (!mqttClient.connected()) {
+    Serial.println("[MQTT] Skip publish — not connected");
+    return;
+  }
+
+  StaticJsonDocument<384> doc;
+  doc["sensor_voltage"]   = sensorVoltage;
+  doc["baseline_voltage"] = baselineVoltage;
+  doc["acetone_delta_mv"] = acetoneDeltaMV;
+  doc["pressure_kpa"]     = pressureKPa;
+  if (shtOK) {
+    doc["temperature"]    = temperature;
+    doc["humidity"]       = humidity;
+  } else {
+    doc["temperature"]    = nullptr;
+    doc["humidity"]       = nullptr;
+  }
+  doc["reading_number"]   = readingNumber;
+
+  char buf[384];
+  size_t n = serializeJson(doc, buf);
+
+  if (mqttClient.publish(mqttTopic, (const uint8_t*)buf, n, false)) {
+    Serial.print("[MQTT] Published ");
+    Serial.print((int)n);
+    Serial.print(" bytes → ");
+    Serial.println(buf);
+  } else {
+    Serial.print("[MQTT] Publish FAILED rc=");
+    Serial.println(mqttClient.state());
+  }
+}

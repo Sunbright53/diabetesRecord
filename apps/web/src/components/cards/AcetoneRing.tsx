@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import { formatAcetone, unitLabel, useUnits } from "@/lib/units";
 
 interface Props {
   value: number | null;
@@ -25,6 +26,7 @@ const LABEL_TH: Record<string, string> = {
 };
 
 export function AcetoneRing({ value, label, size = 200 }: Props) {
+  const { unit } = useUnits();
   const cfg = LABEL_CONFIG[label ?? ""] ?? LABEL_CONFIG.unreliable;
   const r = (size / 2) - 16;
   const circumference = 2 * Math.PI * r;
@@ -73,9 +75,9 @@ export function AcetoneRing({ value, label, size = 200 }: Props) {
       {/* Center text */}
       <div className="absolute inset-0 flex flex-col items-center justify-center">
         <p className="text-4xl font-bold tracking-tight" style={{ color: cfg.color }}>
-          {value != null ? value.toFixed(0) : "—"}
+          {formatAcetone(value, unit)}
         </p>
-        <p className="text-xs text-text-muted mt-0.5">mV</p>
+        <p className="text-xs text-text-muted mt-0.5">{unitLabel(unit)}</p>
         {label && (
           <p className="text-xs font-semibold mt-2" style={{ color: cfg.color }}>
             {LABEL_TH[label] ?? label}
