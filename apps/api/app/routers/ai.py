@@ -361,17 +361,35 @@ async def get_flexibility(
     )
     readings = readings_result.all()
 
-    sessions = [
-        {
-            "peak_ppm":    r.acetone_delta,
-            "mean_ppm":    r.acetone_delta,
-            "context_tag": getattr(r, "context_tag", None),
-        }
-        for r in readings
-        if r.acetone_delta is not None
-    ]
+    # Group individual sensor readings into breath sessions.
+    # A new session starts when there is a >5-minute gap between readings.
+    SESSION_GAP_SECS = 300
+    sessions = []
+    current_group: list = []
 
-    latest_ppm = readings[-1].acetone_delta if readings else None
+    for r in readings:
+        if r.acetone_delta is None:
+            continue
+        if current_group and (r.time - current_group[-1].time).total_seconds() > SESSION_GAP_SECS:
+            # Flush current group as one session (take the peak reading)
+            peak_r = max(current_group, key=lambda x: x.acetone_delta or 0)
+            sessions.append({
+                "peak_ppm": peak_r.acetone_delta,
+                "mean_ppm": sum(x.acetone_delta for x in current_group) / len(current_group),
+                "context_tag": None,
+            })
+            current_group = []
+        current_group.append(r)
+
+    if current_group:
+        peak_r = max(current_group, key=lambda x: x.acetone_delta or 0)
+        sessions.append({
+            "peak_ppm": peak_r.acetone_delta,
+            "mean_ppm": sum(x.acetone_delta for x in current_group) / len(current_group),
+            "context_tag": None,
+        })
+
+    latest_ppm = sessions[-1]["peak_ppm"] if sessions else None
     result = flexibility_engine.compute_flexibility(
         sessions,
         latest_ppm=latest_ppm,

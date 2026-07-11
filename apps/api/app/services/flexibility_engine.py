@@ -41,53 +41,90 @@ def _metabolic_zone(ppm: float) -> str:
 
 def _amplitude_score(sessions: list[dict]) -> float:
     """
-    40 pts max. Measures swing range across sessions.
-    Ideal: some sessions in fat_oxidation range (8–40 ppm), some near baseline.
-    Score = 40 × clamp(max_range / 30, 0, 1)
+    40 pts max. Measures whether sessions span MULTIPLE zones (real metabolic range).
+
+    Scoring:
+    - 1 zone only (no variation)     →  0–10 pts
+    - 2 zones covered                → 15–25 pts
+    - 3+ zones covered (ideal)       → 30–40 pts
+    - Bonus if highest session ≥ 8 ppm (fat_oxidation reached at some point)
     """
-    values = [s.get("peak_ppm") or s.get("mean_ppm") or 0.0 for s in sessions if s.get("peak_ppm") is not None or s.get("mean_ppm") is not None]
+    values = [
+        s.get("peak_ppm") or s.get("mean_ppm") or 0.0
+        for s in sessions
+        if s.get("peak_ppm") is not None or s.get("mean_ppm") is not None
+    ]
     if not values:
         return 0.0
+
+    zones_hit = set(_metabolic_zone(v) for v in values) - {"safety_alert"}
+    n_zones = len(zones_hit)
     max_v = max(values)
-    min_v = min(values)
-    swing = max_v - min_v
-    # Ideal swing is 15–30 ppm (enough metabolic flexibility, not dangerous)
-    score = min(1.0, swing / 30.0) * 40.0
+    mean_v = _stats.mean(values)
+
+    if n_zones >= 3:
+        base = 35.0
+    elif n_zones == 2:
+        base = 22.0
+    else:
+        base = 8.0
+
+    # Bonus: reaching fat_oxidation range (8–40 ppm) shows the body can burn fat
+    fat_bonus = 5.0 if max_v >= 8.0 else 0.0
+    # Penalty: if mean is already very high (>30 ppm) body is stuck in high zone
+    stuck_penalty = 5.0 if mean_v > 30.0 else 0.0
+
+    score = min(40.0, base + fat_bonus - stuck_penalty)
     return round(score, 1)
 
 
 def _return_speed_score(sessions: list[dict]) -> float:
     """
-    35 pts max. Proxy: std-dev of values in fasting/exercise sessions
-    compared to post_meal sessions. Higher std-dev with appropriate context = good speed.
-    Fallback: if no paired context data, use ratio of min/max (lower ratio = faster return).
+    35 pts max. Measures how well sessions RETURN to baseline between high readings.
+
+    With context tags: compare fasting (should be high) vs post_meal (should be low).
+    Without context: use % of sessions that are in fed_resting/transitional zone
+    as a proxy — a flexible person has a mix of low AND high readings.
     """
     fasting_vals = [
-        s.get("peak_ppm") or s.get("mean_ppm") or 0.0
+        s.get("peak_ppm") or 0.0
         for s in sessions
-        if s.get("context_tag") in ("fasting", "post_exercise") and (s.get("peak_ppm") is not None)
+        if s.get("context_tag") in ("fasting", "post_exercise") and s.get("peak_ppm") is not None
     ]
     postmeal_vals = [
-        s.get("peak_ppm") or s.get("mean_ppm") or 0.0
+        s.get("peak_ppm") or 0.0
         for s in sessions
-        if s.get("context_tag") == "post_meal" and (s.get("peak_ppm") is not None)
+        if s.get("context_tag") == "post_meal" and s.get("peak_ppm") is not None
     ]
 
     if fasting_vals and postmeal_vals:
         fasting_avg = _stats.mean(fasting_vals)
         postmeal_avg = _stats.mean(postmeal_vals)
         ratio = postmeal_avg / fasting_avg if fasting_avg > 0 else 1.0
-        # Good flexibility: postmeal should be lower than fasting (ratio < 1)
-        # score = 35 if ratio <= 0.5, 0 if ratio >= 1.5
         score = max(0.0, min(35.0, (1.5 - ratio) / 1.0 * 35.0))
-    else:
-        all_vals = [s.get("peak_ppm") or s.get("mean_ppm") or 0.0 for s in sessions if s.get("peak_ppm") is not None]
-        if len(all_vals) < 2:
-            return 17.5  # neutral default
-        rng = max(all_vals) - min(all_vals)
-        # Some variation is good — no variation means no flexibility
-        score = min(35.0, rng / 20.0 * 35.0)
+        return round(score, 1)
 
+    # No context data — use zone distribution as proxy.
+    # Ideal: some sessions low (fed_resting/transitional) AND some high (fat_oxidation).
+    # A person stuck always-high or always-low shows poor return speed.
+    all_vals = [
+        s.get("peak_ppm") or 0.0
+        for s in sessions
+        if s.get("peak_ppm") is not None
+    ]
+    if len(all_vals) < 2:
+        return 17.5
+
+    low_pct  = sum(1 for v in all_vals if v < 8.0) / len(all_vals)   # fed+transitional
+    high_pct = sum(1 for v in all_vals if 8.0 <= v < 75.0) / len(all_vals)  # fat_oxidation+extended
+
+    # If all readings are on one side we can't assess return — give neutral
+    if low_pct == 0 or high_pct == 0:
+        return 17.5
+
+    # Good balance: 20–70% low, 20–70% high → score near 35
+    balance = min(low_pct, high_pct) / 0.5   # peaks at 1.0 when 50/50
+    score = balance * 35.0
     return round(score, 1)
 
 
