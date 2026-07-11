@@ -55,6 +55,7 @@ class UserOut(BaseModel):
     id: UUID
     username: str
     email: str
+    role: str = "patient"
     created_at: datetime
     profile: Optional[ProfileOut] = None
     is_admin: bool = False

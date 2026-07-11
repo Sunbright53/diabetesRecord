@@ -1,6 +1,9 @@
 """
 Admin router — manual sensor reading entry + user data overview.
-Double-gated: JWT must belong to ADMIN_EMAIL + X-Admin-Password header must match ADMIN_PASSWORD.
+Access is granted either by role-based login (User.role == "admin", e.g. the
+seeded "admin" account) or, for backwards compatibility, the legacy path where
+the JWT belongs to ADMIN_EMAIL and the X-Admin-Password header matches
+ADMIN_PASSWORD. See app.core.deps.get_admin_user.
 """
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
@@ -17,6 +20,7 @@ from app.core.deps import get_admin_user, get_db
 from app.models.user import User, Profile
 from app.models.health import Device, SensorReading, DeviceCalibration, KetoneLog
 from app.services import signal_processing as sp
+from app.services.auth import deactivate_user
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -49,6 +53,8 @@ class AdminUserOut(BaseModel):
     email: str
     username: str
     display_name: Optional[str]
+    role: str
+    assigned_doctor_id: Optional[str]
     created_at: datetime
     devices: List[AdminDeviceOut]
     reading_summary: AdminReadingSummary
@@ -83,6 +89,20 @@ class AdminReadingOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class DoctorOut(BaseModel):
+    id: str
+    username: str
+    display_name: Optional[str]
+
+
+class RoleUpdateRequest(BaseModel):
+    role: str  # patient|doctor|admin
+
+
+class AssignDoctorRequest(BaseModel):
+    doctor_id: Optional[str] = None  # null unassigns
 
 
 # ─── Verify (no JWT needed — just admin password) ─────────────────────────────
@@ -151,6 +171,8 @@ async def list_users(
             email=u.email,
             username=u.username,
             display_name=profile.display_name if profile else None,
+            role=u.role,
+            assigned_doctor_id=str(profile.assigned_doctor_id) if profile and profile.assigned_doctor_id else None,
             created_at=u.created_at,
             devices=[
                 AdminDeviceOut(
@@ -166,6 +188,126 @@ async def list_users(
             reading_summary=summary,
         ))
     return out
+
+
+# ─── Delete a user's account (force — unlinks devices first) ─────────────────
+
+@router.delete("/users/{user_id}", status_code=204)
+async def delete_user(
+    user_id: str,
+    admin: User = Depends(get_admin_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        uid = UUID(user_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid user_id")
+
+    if uid == admin.id:
+        raise HTTPException(status_code=400, detail="Cannot delete your own admin account")
+
+    target_result = await db.exec(select(User).where(User.id == uid, User.is_active == True))
+    target = target_result.first()
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    if target.role == "admin":
+        raise HTTPException(status_code=400, detail="Cannot delete another admin account")
+
+    await deactivate_user(target, db)
+
+
+# ─── Doctors list (for assignment dropdown) ───────────────────────────────────
+
+@router.get("/doctors", response_model=List[DoctorOut])
+async def list_doctors(
+    _admin: User = Depends(get_admin_user),
+    db: AsyncSession = Depends(get_db),
+):
+    users_result = await db.exec(
+        select(User).where(User.role == "doctor", User.is_active == True).order_by(User.username)
+    )
+    doctors = users_result.all()
+
+    profiles_result = await db.exec(
+        select(Profile).where(Profile.user_id.in_([d.id for d in doctors]))
+    )
+    profiles = {str(p.user_id): p for p in profiles_result.all()}
+
+    return [
+        DoctorOut(
+            id=str(d.id),
+            username=d.username,
+            display_name=profiles[str(d.id)].display_name if str(d.id) in profiles else None,
+        )
+        for d in doctors
+    ]
+
+
+# ─── Set a user's role (needed to create doctors) ─────────────────────────────
+
+@router.post("/users/{user_id}/role")
+async def set_user_role(
+    user_id: str,
+    body: RoleUpdateRequest,
+    admin: User = Depends(get_admin_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if body.role not in ("patient", "doctor", "admin"):
+        raise HTTPException(status_code=400, detail="role must be patient|doctor|admin")
+
+    try:
+        uid = UUID(user_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid user_id")
+
+    target_result = await db.exec(select(User).where(User.id == uid, User.is_active == True))
+    target = target_result.first()
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    target.role = body.role
+    db.add(target)
+    await db.commit()
+    return {"ok": True, "role": target.role}
+
+
+# ─── Assign (or unassign) a patient's doctor ──────────────────────────────────
+
+@router.post("/users/{user_id}/assign-doctor")
+async def assign_doctor(
+    user_id: str,
+    body: AssignDoctorRequest,
+    _admin: User = Depends(get_admin_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        uid = UUID(user_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid user_id")
+
+    profile_result = await db.exec(select(Profile).where(Profile.user_id == uid))
+    profile = profile_result.first()
+    if not profile:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if body.doctor_id is None:
+        profile.assigned_doctor_id = None
+    else:
+        try:
+            doctor_uid = UUID(body.doctor_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid doctor_id")
+
+        doctor_result = await db.exec(
+            select(User).where(User.id == doctor_uid, User.role == "doctor", User.is_active == True)
+        )
+        if not doctor_result.first():
+            raise HTTPException(status_code=400, detail="doctor_id does not belong to an active doctor account")
+        profile.assigned_doctor_id = doctor_uid
+
+    db.add(profile)
+    await db.commit()
+    return {"ok": True, "assigned_doctor_id": str(profile.assigned_doctor_id) if profile.assigned_doctor_id else None}
 
 
 # ─── Ensure manual device ────────────────────────────────────────────────────

@@ -44,10 +44,15 @@ async def get_admin_user(
     if not user or not user.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found or inactive")
 
-    if not settings.ADMIN_EMAIL or user.email != settings.ADMIN_EMAIL:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+    # Path 1: role-based admin account (e.g. the seeded "admin" user) — JWT alone is enough.
+    if user.role == "admin":
+        return user
 
-    if not settings.ADMIN_PASSWORD or x_admin_password != settings.ADMIN_PASSWORD:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid admin credentials")
+    # Path 2 (legacy): JWT belongs to ADMIN_EMAIL and X-Admin-Password header matches ADMIN_PASSWORD.
+    if (
+        settings.ADMIN_EMAIL and user.email.lower() == settings.ADMIN_EMAIL.lower()
+        and settings.ADMIN_PASSWORD and x_admin_password == settings.ADMIN_PASSWORD
+    ):
+        return user
 
-    return user
+    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
