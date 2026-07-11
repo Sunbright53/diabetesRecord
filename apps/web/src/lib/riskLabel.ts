@@ -21,6 +21,30 @@ export type MetabolicZone =
 /** Back-compat alias */
 export type AcetoneLabel = MetabolicZone;
 
+/**
+ * Map Anderson 2015 five-class backend labels → 4-zone frontend MetabolicZone.
+ * Backend stores: basal|light_ketosis|nutritional_ketosis|deep_ketosis|dka_risk
+ * Frontend shows: fed_resting|transitional|fat_oxidation|extended_fast|safety_alert
+ */
+export function backendLabelToZone(label: string | null | undefined): MetabolicZone {
+  const map: Record<string, MetabolicZone> = {
+    basal:                "fed_resting",
+    light_ketosis:        "transitional",
+    nutritional_ketosis:  "fat_oxidation",
+    deep_ketosis:         "extended_fast",
+    dka_risk:             "safety_alert",
+    // pass-through if already 4-zone
+    fed_resting:          "fed_resting",
+    transitional:         "transitional",
+    fat_oxidation:        "fat_oxidation",
+    extended_fast:        "extended_fast",
+    safety_alert:         "safety_alert",
+    clean:                "clean",
+    unreliable:           "unreliable",
+  };
+  return map[label ?? ""] ?? "unreliable";
+}
+
 /** Zone thresholds in ppm (acetone_delta) */
 export const ZONE_THRESHOLDS: [number, MetabolicZone][] = [
   [2,  "fed_resting"],

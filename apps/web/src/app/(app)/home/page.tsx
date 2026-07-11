@@ -10,6 +10,7 @@ import { parseServerTime } from "@/lib/time";
 import { useUnits } from "@/lib/units";
 import { AcetoneRing } from "@/components/cards/AcetoneRing";
 import { FlexibilityBar } from "@/components/FlexibilityBar";
+import { LABEL_TH, backendLabelToZone } from "@/lib/riskLabel";
 import { TodayMetricCard } from "@/components/cards/TodayMetricCard";
 import { CategoryCard } from "@/components/cards/CategoryCard";
 import Link from "next/link";
@@ -177,7 +178,7 @@ export default function HomePage() {
             icon="🌬"
             title="Breathing"
             value={heroValue != null ? `${fmtAcetone(heroValue)} ${unitLbl}` : "—"}
-            sub={heroLabel ?? "ไม่มีข้อมูล"}
+            sub={heroLabel ? (LABEL_TH[backendLabelToZone(heroLabel)] ?? heroLabel) : "ไม่มีข้อมูล"}
             href="/breathing"
             iconBg="#00C896"
           />

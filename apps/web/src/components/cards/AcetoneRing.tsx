@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import { formatAcetone, unitLabel, useUnits } from "@/lib/units";
-import { LABEL_STYLE, LABEL_TH } from "@/lib/riskLabel";
+import { LABEL_STYLE, LABEL_TH, backendLabelToZone } from "@/lib/riskLabel";
 
 interface Props {
   value: number | null;
@@ -12,7 +12,8 @@ interface Props {
 
 export function AcetoneRing({ value, label, size = 200 }: Props) {
   const { unit } = useUnits();
-  const cfg = LABEL_STYLE[label ?? ""] ?? LABEL_STYLE.unreliable;
+  const zone = backendLabelToZone(label);
+  const cfg = LABEL_STYLE[zone] ?? LABEL_STYLE.unreliable;
   const r = (size / 2) - 16;
   const circumference = 2 * Math.PI * r;
 
@@ -65,7 +66,7 @@ export function AcetoneRing({ value, label, size = 200 }: Props) {
         <p className="text-xs text-text-muted mt-0.5">{unitLabel(unit)}</p>
         {label && (
           <p className="text-xs font-semibold mt-2" style={{ color: cfg.color }}>
-            {LABEL_TH[label] ?? label}
+            {LABEL_TH[zone] ?? label}
           </p>
         )}
       </div>

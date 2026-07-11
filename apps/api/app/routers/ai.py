@@ -276,8 +276,8 @@ async def predict_lstm(
                 "acetone_delta":     r.acetone_delta,
                 "quality_score":     r.quality_score,
                 "reliability_score": r.reliability_score,
-                "ketosis_index":     r.ketosis_index,
-                "metabolic_score":   r.metabolic_score,
+                "ketosis_index":     None,   # not stored — LSTM default to 0
+                "metabolic_score":   None,
                 "pressure_mean":     r.pressure_mean,
                 "temperature":       r.temp_c,
                 "humidity":          r.humidity_pct,

@@ -9,7 +9,7 @@ import type { AcetoneLabel, LiveReading } from "@/lib/useDeviceStream";
 import { api } from "@/lib/api";
 import type { ContextTag } from "@/lib/api";
 import { useUnits } from "@/lib/units";
-import { LABEL_STYLE, LABEL_TH } from "@/lib/riskLabel";
+import { LABEL_STYLE, LABEL_TH, backendLabelToZone } from "@/lib/riskLabel";
 import { ContextSelector } from "./ContextSelector";
 
 const CALIBRATION_MS = 10_000;
@@ -439,8 +439,9 @@ export default function BreathSession({ liveReading, connected, deviceId, onSess
 
   /* ── done ── */
   if (!result) return null;
-  const lColor = LABEL_COLOR[result.label ?? ""] ?? "text-text-muted";
-  const lText = LABEL_TH[result.label ?? ""] ?? result.label ?? "—";
+  const resultZone = backendLabelToZone(result.label);
+  const lColor = LABEL_COLOR[resultZone] ?? "text-text-muted";
+  const lText = LABEL_TH[resultZone] ?? result.label ?? "—";
 
   return (
     <DoneCard
@@ -545,8 +546,9 @@ export function RecentBreathSessions({ sessions }: { sessions: SessionSummary[] 
       ) : (
         <div className="space-y-2">
           {sessions.map((s) => {
-            const lColor = LABEL_COLOR[s.label ?? ""] ?? "text-text-muted";
-            const lText = LABEL_TH[s.label ?? ""] ?? s.label ?? "—";
+            const sZone = backendLabelToZone(s.label);
+            const lColor = LABEL_COLOR[sZone] ?? "text-text-muted";
+            const lText = LABEL_TH[sZone] ?? s.label ?? "—";
             return (
               <div key={s.id} className="bg-bg-elevated rounded-2xl p-4 flex items-center gap-3">
                 <div className="w-14 text-right">
