@@ -61,7 +61,7 @@ export function FlexibilityBar({ data, loading }: Props) {
       </div>
 
       {/* Main bar */}
-      <div className="relative h-3 w-full bg-bg-raise rounded-full overflow-hidden bg-bg-raised">
+      <div className="relative h-3 w-full bg-bg-raised rounded-full overflow-hidden">
         <div
           className="absolute inset-y-0 left-0 rounded-full transition-all duration-700"
           style={{

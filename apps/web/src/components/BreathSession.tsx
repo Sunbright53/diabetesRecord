@@ -277,6 +277,7 @@ export default function BreathSession({ liveReading, connected, deviceId, onSess
     setResult(null);
     setChartData([]);
     setContextTag(null);
+    setShowContextSelector(false);
     samplesRef.current = [];
     lastReading.current = null;
   }
