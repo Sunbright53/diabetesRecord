@@ -9,6 +9,7 @@ import { useDeviceStream } from "@/lib/useDeviceStream";
 import { parseServerTime } from "@/lib/time";
 import { useUnits } from "@/lib/units";
 import { AcetoneRing } from "@/components/cards/AcetoneRing";
+import { FlexibilityBar } from "@/components/FlexibilityBar";
 import { TodayMetricCard } from "@/components/cards/TodayMetricCard";
 import { CategoryCard } from "@/components/cards/CategoryCard";
 import Link from "next/link";
@@ -39,6 +40,13 @@ export default function HomePage() {
     refetchInterval: 30_000,
   });
   const today = dailyStats?.[0];
+
+  const { data: flexData, isLoading: flexLoading } = useQuery({
+    queryKey: ["ai", "flexibility", deviceId],
+    queryFn:  () => api.ai.getFlexibility(deviceId!, undefined, 14),
+    enabled:  !!deviceId,
+    staleTime: 5 * 60 * 1000,
+  });
 
   const dateLocale = locale === "th" ? "th-TH" : "en-US";
   const dateStr = new Date().toLocaleDateString(dateLocale, { weekday: "short", day: "numeric", month: "short" });
@@ -71,12 +79,20 @@ export default function HomePage() {
         )}
       </div>
 
-      {/* Acetone hero ring */}
-      <div className="bg-bg-elevated rounded-3xl p-6 flex flex-col items-center gap-4">
+      {/* Flexibility Score — Layer 3 hero */}
+      <div className="bg-bg-elevated rounded-3xl p-5">
+        <p className="text-xs text-text-muted font-semibold uppercase tracking-widest mb-4">
+          Metabolic Flexibility
+        </p>
+        <FlexibilityBar data={flexData} loading={!!deviceId && flexLoading} />
+      </div>
+
+      {/* Acetone ring — secondary snapshot */}
+      <div className="bg-bg-elevated rounded-3xl p-5 flex flex-col items-center gap-3">
         <p className="text-xs text-text-muted font-semibold uppercase tracking-widest">
           BREATH ACETONE · สูงสุดวันนี้
         </p>
-        <AcetoneRing value={heroValue} label={heroLabel} size={200} />
+        <AcetoneRing value={heroValue} label={heroLabel} size={160} />
         <div className="flex items-center gap-2">
           <div className={`h-2 w-2 rounded-full ${liveConnected ? "bg-mint-500 animate-pulse" : "bg-text-disabled"}`} />
           <span className="text-xs text-text-muted">

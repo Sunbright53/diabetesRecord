@@ -470,6 +470,24 @@ export interface ChatResponse {
   disclaimer_appended: boolean;
 }
 
+export type ContextTag = "fasting" | "post_meal" | "post_exercise" | "evening";
+
+export interface FlexibilityBreakdown {
+  amplitude: number;      // 0–40
+  return_speed: number;   // 0–35
+  appropriateness: number; // 0–25
+}
+
+export interface FlexibilityResponse {
+  score: number;          // 0–100
+  zone: string;
+  breakdown: FlexibilityBreakdown;
+  trend: "improving" | "stable" | "declining" | "increasing" | "decreasing" | "insufficient_data";
+  n_sessions: number;
+  message_th: string;
+  context_tag: ContextTag | null;
+}
+
 // ─── Pilot Study ─────────────────────────────────────
 export interface PilotSessionCreate {
   cohort: string;
@@ -681,6 +699,11 @@ export const api = {
       request<ChatResponse>("/ai/chat", {
         method: "POST",
         body: JSON.stringify({ message, device_id: deviceId }),
+      }),
+    getFlexibility: (deviceId: string, contextTag?: string, days = 14) =>
+      request<FlexibilityResponse>("/ai/flexibility", {
+        method: "POST",
+        body: JSON.stringify({ device_id: deviceId, context_tag: contextTag ?? null, days }),
       }),
   },
   pilot: {

@@ -11,7 +11,7 @@ from app.core.deps import get_current_user
 from app.db.session import get_db
 from app.models.user import User
 from app.models.health import Device, DeviceCalibration, SensorReading
-from app.services import ml_inference, llm_guardrail
+from app.services import ml_inference, llm_guardrail, flexibility_engine
 
 router = APIRouter(prefix="/ai", tags=["ai"])
 
@@ -84,6 +84,29 @@ class ChatResponse(BaseModel):
     reply: str
     refusal: bool
     disclaimer_appended: bool
+
+
+class FlexibilityRequest(BaseModel):
+    device_id: UUID
+    context_tag: Optional[str] = None   # fasting | post_meal | post_exercise | evening
+    fasting_hours: Optional[float] = None
+    days: int = 14
+
+
+class FlexibilityBreakdown(BaseModel):
+    amplitude: float
+    return_speed: float
+    appropriateness: float
+
+
+class FlexibilityResponse(BaseModel):
+    score: int
+    zone: str
+    breakdown: FlexibilityBreakdown
+    trend: str
+    n_sessions: int
+    message_th: str
+    context_tag: Optional[str] = None
 
 
 # ─── POST /ai/predict ─────────────────────────────────────────────────────────
@@ -312,4 +335,55 @@ async def check_drift(
         baseline_voc=result.get("baseline_voc"),
         latest_voc=result.get("latest_voc"),
         n_calibrations_used=len(calibrations),
+    )
+
+
+# ─── POST /ai/flexibility ─────────────────────────────────────────────────────
+
+@router.post("/flexibility", response_model=FlexibilityResponse)
+async def get_flexibility(
+    body: FlexibilityRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Compute Metabolic Flexibility Score (0-100) from recent breath sessions."""
+    device_result = await db.exec(
+        select(Device).where(Device.id == body.device_id, Device.user_id == user.id)
+    )
+    if not device_result.first():
+        raise HTTPException(status_code=404, detail="Device not found")
+
+    since = datetime.utcnow() - timedelta(days=body.days)
+    readings_result = await db.exec(
+        select(SensorReading)
+        .where(SensorReading.device_id == body.device_id, SensorReading.time >= since)
+        .order_by(SensorReading.time)
+    )
+    readings = readings_result.all()
+
+    sessions = [
+        {
+            "peak_ppm":    r.acetone_delta,
+            "mean_ppm":    r.acetone_delta,
+            "context_tag": getattr(r, "context_tag", None),
+        }
+        for r in readings
+        if r.acetone_delta is not None
+    ]
+
+    latest_ppm = readings[-1].acetone_delta if readings else None
+    result = flexibility_engine.compute_flexibility(
+        sessions,
+        latest_ppm=latest_ppm,
+        context_tag=body.context_tag,
+    )
+
+    return FlexibilityResponse(
+        score=result["score"],
+        zone=result["zone"],
+        breakdown=FlexibilityBreakdown(**result["breakdown"]),
+        trend=result["trend"],
+        n_sessions=result["n_sessions"],
+        message_th=result["message_th"],
+        context_tag=body.context_tag,
     )

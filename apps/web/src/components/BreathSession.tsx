@@ -7,8 +7,10 @@ import { AreaChart, Area, ResponsiveContainer, YAxis } from "recharts";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { AcetoneLabel, LiveReading } from "@/lib/useDeviceStream";
 import { api } from "@/lib/api";
+import type { ContextTag } from "@/lib/api";
 import { useUnits } from "@/lib/units";
 import { LABEL_STYLE, LABEL_TH } from "@/lib/riskLabel";
+import { ContextSelector } from "./ContextSelector";
 
 const CALIBRATION_MS = 10_000;
 const RECORDING_MS   = 10_000;
@@ -25,6 +27,7 @@ export interface SessionSummary {
   pressure_mean_kpa: number | null;
   quality_score: number | null;
   label: AcetoneLabel | null;
+  context_tag: ContextTag | null;
 }
 
 export function loadSessions(): SessionSummary[] {
@@ -112,6 +115,8 @@ export default function BreathSession({ liveReading, connected, deviceId, onSess
   const [progress, setProgress] = useState(0);   // 0-100 within current phase
   const [result, setResult] = useState<SessionSummary | null>(null);
   const [chartData, setChartData] = useState<{ t: number; mv: number }[]>([]);
+  const [showContextSelector, setShowContextSelector] = useState(false);
+  const [contextTag, setContextTag] = useState<ContextTag | null>(null);
 
   const t0 = useRef(0);
   const samplesRef = useRef<LiveReading[]>([]);
@@ -231,6 +236,7 @@ export default function BreathSession({ liveReading, connected, deviceId, onSess
         : null,
       quality_score: qualities.reduce((a, b) => a + b, 0) / qualities.length,
       label: modeLabel(s),
+      context_tag: contextTag,
     };
     persist(summary);
     setResult(summary);
@@ -255,6 +261,12 @@ export default function BreathSession({ liveReading, connected, deviceId, onSess
       return;
     }
     primeAudio();  // must run on user gesture (iOS Safari)
+    setShowContextSelector(true);
+  }
+
+  function beginCalibration(tag: ContextTag | null) {
+    setContextTag(tag);
+    setShowContextSelector(false);
     setPhase("calibrating");
   }
 
@@ -264,6 +276,7 @@ export default function BreathSession({ liveReading, connected, deviceId, onSess
     setProgress(0);
     setResult(null);
     setChartData([]);
+    setContextTag(null);
     samplesRef.current = [];
     lastReading.current = null;
   }
@@ -289,24 +302,32 @@ export default function BreathSession({ liveReading, connected, deviceId, onSess
   /* ── idle ── */
   if (phase === "idle") {
     return (
-      <div className="flex flex-col items-center py-8">
-        <button
-          onClick={start}
-          className="h-28 w-28 rounded-full bg-mint-500/10 border-2 border-mint-500/40 flex flex-col items-center justify-center gap-2 hover:bg-mint-500/20 active:scale-95 transition-all duration-200"
-        >
-          <Wind
-            size={32}
-            className={connected ? "text-mint-500" : "text-text-muted"}
-            strokeWidth={1.6}
+      <>
+        <div className="flex flex-col items-center py-8">
+          <button
+            onClick={start}
+            className="h-28 w-28 rounded-full bg-mint-500/10 border-2 border-mint-500/40 flex flex-col items-center justify-center gap-2 hover:bg-mint-500/20 active:scale-95 transition-all duration-200"
+          >
+            <Wind
+              size={32}
+              className={connected ? "text-mint-500" : "text-text-muted"}
+              strokeWidth={1.6}
+            />
+            <span className={`text-xs font-semibold uppercase tracking-wide ${connected ? "text-mint-500" : "text-text-muted"}`}>
+              START
+            </span>
+          </button>
+          <p className="text-xs text-text-muted mt-4">
+            {connected ? "กดเพื่อเริ่มการตรวจ" : "เชื่อมต่ออุปกรณ์ก่อนเริ่ม"}
+          </p>
+        </div>
+        {showContextSelector && (
+          <ContextSelector
+            onSelect={(tag) => beginCalibration(tag)}
+            onSkip={() => beginCalibration(null)}
           />
-          <span className={`text-xs font-semibold uppercase tracking-wide ${connected ? "text-mint-500" : "text-text-muted"}`}>
-            START
-          </span>
-        </button>
-        <p className="text-xs text-text-muted mt-4">
-          {connected ? "กดเพื่อเริ่มการตรวจ" : "เชื่อมต่ออุปกรณ์ก่อนเริ่ม"}
-        </p>
-      </div>
+        )}
+      </>
     );
   }
 
