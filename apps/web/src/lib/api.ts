@@ -62,6 +62,7 @@ export interface UserOut {
   id: string;
   username: string;
   email: string;
+  role: string;
   created_at: string;
   profile: ProfileOut | null;
   is_admin?: boolean;
@@ -244,9 +245,17 @@ export interface AdminUserOut {
   email: string;
   username: string;
   display_name: string | null;
+  role: string;
+  assigned_doctor_id: string | null;
   created_at: string;
   devices: AdminDeviceOut[];
   reading_summary: AdminReadingSummary;
+}
+
+export interface DoctorOut {
+  id: string;
+  username: string;
+  display_name: string | null;
 }
 
 export interface AdminReadingCreate {
@@ -706,5 +715,19 @@ export const api = {
       request<UserDashboardOut>(`/admin/user/${userId}/dashboard?days=${days}`),
     ketoneAgreement: () =>
       request<KetoneAgreementOut>("/admin/ketone-agreement"),
+    deleteUser: (userId: string) =>
+      request<void>(`/admin/users/${userId}`, { method: "DELETE" }),
+    listDoctors: () =>
+      request<DoctorOut[]>("/admin/doctors"),
+    setRole: (userId: string, role: "patient" | "doctor" | "admin") =>
+      request<{ ok: boolean; role: string }>(`/admin/users/${userId}/role`, {
+        method: "POST",
+        body: JSON.stringify({ role }),
+      }),
+    assignDoctor: (userId: string, doctorId: string | null) =>
+      request<{ ok: boolean; assigned_doctor_id: string | null }>(
+        `/admin/users/${userId}/assign-doctor`,
+        { method: "POST", body: JSON.stringify({ doctor_id: doctorId }) }
+      ),
   },
 };

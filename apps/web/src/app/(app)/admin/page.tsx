@@ -8,8 +8,10 @@ import {
   AdminDeviceOut,
   AdminReadingOut,
   AdminReadingSummary,
+  DoctorOut,
 } from "@/lib/api";
 import AdminAgreementPanel from "@/components/AdminAgreementPanel";
+import { useAuth } from "@/lib/auth";
 
 // ─── Label styling ────────────────────────────────────────────────────────────
 
@@ -465,33 +467,174 @@ function EntryPanel({
   );
 }
 
+// ─── Actions Panel (delete / doctor assignment) ────────────────────────────────
+
+function ActionsPanel({
+  user,
+  doctors,
+  onDeleted,
+  onUpdated,
+}: {
+  user: AdminUserOut;
+  doctors: DoctorOut[];
+  onDeleted: () => void;
+  onUpdated: (updated: AdminUserOut) => void;
+}) {
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleDelete() {
+    setBusy(true);
+    setError("");
+    try {
+      await api.admin.deleteUser(user.id);
+      onDeleted();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "เกิดข้อผิดพลาด");
+      setBusy(false);
+      setConfirmingDelete(false);
+    }
+  }
+
+  async function handleAssignDoctor(doctorId: string) {
+    setBusy(true);
+    setError("");
+    try {
+      await api.admin.assignDoctor(user.id, doctorId || null);
+      onUpdated({ ...user, assigned_doctor_id: doctorId || null });
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "เกิดข้อผิดพลาด");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleMakeDoctor() {
+    setBusy(true);
+    setError("");
+    try {
+      await api.admin.setRole(user.id, "doctor");
+      onUpdated({ ...user, role: "doctor" });
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "เกิดข้อผิดพลาด");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="space-y-5">
+      <div className="space-y-2">
+        <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">บทบาท</div>
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-gray-700 capitalize">{user.role}</span>
+          {user.role === "patient" && (
+            <button
+              onClick={handleMakeDoctor}
+              disabled={busy}
+              className="text-xs px-2.5 py-1 rounded-lg border border-gray-200 text-gray-500 hover:border-gray-300 hover:text-gray-700 transition disabled:opacity-50"
+            >
+              ตั้งเป็นแพทย์
+            </button>
+          )}
+        </div>
+      </div>
+
+      {user.role === "patient" && (
+        <div className="space-y-2">
+          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide">แพทย์ผู้ดูแล</div>
+          <select
+            value={user.assigned_doctor_id ?? ""}
+            onChange={(e) => handleAssignDoctor(e.target.value)}
+            disabled={busy}
+            className="w-full border border-gray-200 rounded-xl px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-slate-300 transition bg-white disabled:opacity-50"
+          >
+            <option value="">ยังไม่กำหนด</option>
+            {doctors.map((d) => (
+              <option key={d.id} value={d.id}>{d.display_name || d.username}</option>
+            ))}
+          </select>
+          {doctors.length === 0 && (
+            <div className="text-xs text-gray-400">ยังไม่มีบัญชีแพทย์ — ตั้งผู้ใช้คนใดคนหนึ่งเป็นแพทย์ก่อน</div>
+          )}
+        </div>
+      )}
+
+      {error && (
+        <div className="bg-red-50 border border-red-100 rounded-xl px-4 py-3 text-red-600 text-sm">{error}</div>
+      )}
+
+      <div className="pt-2 border-t border-gray-100">
+        {!confirmingDelete ? (
+          <button
+            onClick={() => setConfirmingDelete(true)}
+            className="text-xs text-red-500 hover:text-red-700 transition px-3 py-2 rounded-lg hover:bg-red-50"
+          >
+            ลบบัญชีผู้ใช้นี้
+          </button>
+        ) : (
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-gray-500">ยืนยันการลบบัญชี?</span>
+            <button
+              onClick={handleDelete}
+              disabled={busy}
+              className="text-xs px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white transition disabled:opacity-50"
+            >
+              {busy ? "กำลังลบ..." : "ยืนยันลบ"}
+            </button>
+            <button
+              onClick={() => setConfirmingDelete(false)}
+              disabled={busy}
+              className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-500 hover:border-gray-300 transition"
+            >
+              ยกเลิก
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
+
+type Tab = "entry" | "actions";
 
 export default function AdminPage() {
   const router = useRouter();
+  const { user: currentUser, loading: authLoading, logout } = useAuth();
   const [unlocked, setUnlocked] = useState(false);
   const [users, setUsers] = useState<AdminUserOut[]>([]);
+  const [doctors, setDoctors] = useState<DoctorOut[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedUser, setSelectedUser] = useState<AdminUserOut | null>(null);
+  const [tab, setTab] = useState<Tab>("entry");
+
+  // Role-based admin (e.g. the seeded "admin" account) skips the password gate entirely.
+  const isRoleAdmin = currentUser?.role === "admin" || !!currentUser?.is_admin;
 
   // Check if already unlocked this session
   useEffect(() => {
+    if (authLoading) return;
+    if (isRoleAdmin) { setUnlocked(true); return; }
     const stored = sessionStorage.getItem("admin_password");
     if (stored) setUnlocked(true);
-  }, []);
+  }, [authLoading, isRoleAdmin]);
 
   useEffect(() => {
     if (!unlocked) return;
     setLoading(true);
-    api.admin
-      .listUsers()
-      .then(setUsers)
+    Promise.all([api.admin.listUsers(), api.admin.listDoctors()])
+      .then(([u, d]) => { setUsers(u); setDoctors(d); })
       .catch(() => {
-        sessionStorage.removeItem("admin_password");
-        setUnlocked(false);
+        if (!isRoleAdmin) {
+          sessionStorage.removeItem("admin_password");
+          setUnlocked(false);
+        }
       })
       .finally(() => setLoading(false));
-  }, [unlocked]);
+  }, [unlocked, isRoleAdmin]);
 
   function handleUnlock(pw: string) {
     sessionStorage.setItem("admin_password", pw);
@@ -501,6 +644,16 @@ export default function AdminPage() {
   function handleUserUpdated(updated: AdminUserOut) {
     setUsers((prev) => prev.map((u) => (u.id === updated.id ? updated : u)));
     setSelectedUser(updated);
+    if (updated.role === "doctor" && !doctors.some((d) => d.id === updated.id)) {
+      setDoctors((prev) => [...prev, { id: updated.id, username: updated.username, display_name: updated.display_name }]);
+    }
+  }
+
+  function handleUserDeleted() {
+    if (!selectedUser) return;
+    setUsers((prev) => prev.filter((u) => u.id !== selectedUser.id));
+    setDoctors((prev) => prev.filter((d) => d.id !== selectedUser.id));
+    setSelectedUser(null);
   }
 
   if (!unlocked) return <PasswordGate onUnlock={handleUnlock} />;
@@ -522,7 +675,15 @@ export default function AdminPage() {
           </div>
         </div>
         <button
-          onClick={() => { sessionStorage.removeItem("admin_password"); setUnlocked(false); }}
+          onClick={() => {
+            sessionStorage.removeItem("admin_password");
+            if (isRoleAdmin) {
+              logout();
+              window.location.href = "/login";
+            } else {
+              setUnlocked(false);
+            }
+          }}
           className="text-xs text-gray-400 hover:text-gray-600 transition px-3 py-1.5 rounded-lg hover:bg-gray-100"
         >
           ออกจากระบบ Admin
@@ -568,7 +729,10 @@ export default function AdminPage() {
                     key={u.id}
                     user={u}
                     selected={selectedUser?.id === u.id}
-                    onSelect={() => setSelectedUser(u.id === selectedUser?.id ? null : u)}
+                    onSelect={() => {
+                      setSelectedUser(u.id === selectedUser?.id ? null : u);
+                      setTab("entry");
+                    }}
                     onOpen={() => router.push(`/admin/user/${u.id}`)}
                   />
                 ))}
@@ -603,7 +767,35 @@ export default function AdminPage() {
                     </button>
                   </div>
                 </div>
-                <EntryPanel user={selectedUser} onDone={handleUserUpdated} />
+
+                <div className="flex gap-1 mb-5 border-b border-gray-100">
+                  {([
+                    { id: "entry", label: "กรอกข้อมูล" },
+                    { id: "actions", label: "จัดการ" },
+                  ] as { id: Tab; label: string }[]).map((t) => (
+                    <button
+                      key={t.id}
+                      onClick={() => setTab(t.id)}
+                      className={`text-xs font-medium px-3 py-2 -mb-px border-b-2 transition ${
+                        tab === t.id
+                          ? "border-slate-900 text-slate-900"
+                          : "border-transparent text-gray-400 hover:text-gray-600"
+                      }`}
+                    >
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+
+                {tab === "entry" && <EntryPanel user={selectedUser} onDone={handleUserUpdated} />}
+                {tab === "actions" && (
+                  <ActionsPanel
+                    user={selectedUser}
+                    doctors={doctors}
+                    onDeleted={handleUserDeleted}
+                    onUpdated={handleUserUpdated}
+                  />
+                )}
               </div>
             ) : (
               <div className="bg-white rounded-2xl border border-dashed border-gray-200 p-10 flex flex-col items-center justify-center text-center">

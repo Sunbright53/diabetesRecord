@@ -13,6 +13,7 @@ class User(SQLModel, table=True):
     username: str = Field(unique=True, index=True, max_length=50)
     hashed_password: str
     is_active: bool = Field(default=True)
+    role: str = Field(default="patient", max_length=20)  # patient|doctor|admin
     created_at: datetime = Field(default_factory=datetime.utcnow)
     last_login_at: Optional[datetime] = None
 
@@ -28,6 +29,7 @@ class Profile(SQLModel, table=True):
     weight_kg: Optional[float] = None
     goal_type: str = Field(default="monitor", max_length=20)  # exercise|fasting|monitor
     onboarded_at: Optional[datetime] = None
+    assigned_doctor_id: Optional[UUID] = Field(default=None, foreign_key="users.id")
 
 class Questionnaire(SQLModel, table=True):
     __tablename__ = "questionnaires"

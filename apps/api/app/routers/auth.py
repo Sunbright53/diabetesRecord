@@ -41,12 +41,14 @@ async def me(current_user: User = Depends(get_current_user), db: AsyncSession = 
         onboarded_at=profile.onboarded_at,
     ) if profile else None
     is_admin = bool(
-        settings.ADMIN_EMAIL and user.email.lower() == settings.ADMIN_EMAIL.lower()
+        user.role == "admin"
+        or (settings.ADMIN_EMAIL and user.email.lower() == settings.ADMIN_EMAIL.lower())
     )
     return UserOut(
         id=user.id,
         username=user.username,
         email=user.email,
+        role=user.role,
         created_at=user.created_at,
         profile=profile_out,
         is_admin=is_admin,
