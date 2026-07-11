@@ -7,6 +7,9 @@ mosquitto/passwd
 *.key
 *.crt
 
+# docker-compose.override.yml is for local dev only — never deploy to server
+docker-compose.override.yml
+
 # node
 node_modules/
 .next/
