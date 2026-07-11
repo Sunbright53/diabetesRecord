@@ -12,6 +12,7 @@ import {
   ReferenceLine,
 } from "recharts";
 import { useState } from "react";
+import { useTheme } from "next-themes";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useT } from "@/lib/i18n";
@@ -32,6 +33,19 @@ function EmptyChart({ label }: { label: string }) {
   );
 }
 
+function ChartSkeleton({ height = 180 }: { height?: number }) {
+  return (
+    <div className="animate-pulse space-y-3">
+      <div className="rounded-xl bg-bg-raised" style={{ height }} />
+      <div className="flex gap-4">
+        <div className="h-3 bg-bg-raised rounded w-12" />
+        <div className="h-3 bg-bg-raised rounded w-16" />
+        <div className="h-3 bg-bg-raised rounded w-10" />
+      </div>
+    </div>
+  );
+}
+
 const ACETONE_ZONE_COLOR: Record<string, string> = {
   low:        "#00C896",
   moderate:   "#F59E0B",
@@ -42,8 +56,9 @@ const ACETONE_ZONE_COLOR: Record<string, string> = {
 export default function TrendsPage() {
   const { t, locale } = useT();
   const { user } = useAuth();
+  const { resolvedTheme } = useTheme();
+  const isDark = resolvedTheme !== "light";
   const { unit: acUnit, format: fmtAcetone, label: acUnitLbl } = useUnits();
-  // Firmware thresholds are in mV; convert for zone reference lines
   const moderateThreshold = convertFromMv(30, acUnit);
   const highThreshold     = convertFromMv(80, acUnit);
 
@@ -51,6 +66,14 @@ export default function TrendsPage() {
   const [days, setDays] = useState(7);
   const [selectedDevice, setSelectedDevice] = useState<string | null>(null);
   useDeviceStream(user?.id);
+
+  // Theme-aware chart colors
+  const gridColor    = isDark ? "#262626" : "#EEEDE8";
+  const tickColor    = isDark ? "#7A7A7A" : "#6B6B65";
+  const axisColor    = isDark ? "#2A2A2A" : "#D9D7D0";
+  const tooltipStyle: React.CSSProperties = isDark
+    ? { background: "#1F1F1F", border: "1px solid #262626", borderRadius: 10, fontSize: 12, color: "#FAFAFA" }
+    : { background: "#FFFFFF", border: "1px solid #EEEDE8", borderRadius: 10, fontSize: 12 };
 
   const { data: devices } = useQuery({
     queryKey: ["devices"],
@@ -84,7 +107,6 @@ export default function TrendsPage() {
     queryFn:  () => api.logs.getWeight({ days }),
   });
 
-  // Pick first active owned device, else the shared device the user has claimed.
   const effectiveDevice =
     selectedDevice
     ?? devices?.find((d) => d.active)?.id
@@ -113,23 +135,31 @@ export default function TrendsPage() {
   const acetoneData = (sensorReadings ?? [])
     .filter((r) => r.acetone_delta !== null)
     .map((r) => ({
-      date:     fmt(r.time),
-      value:    +convertFromMv(r.acetone_delta!, acUnit).toFixed(2),
-      label:    r.label ?? "unreliable",
-      quality:  r.quality_score ?? 0,
+      date:    fmt(r.time),
+      value:   +convertFromMv(r.acetone_delta!, acUnit).toFixed(2),
+      label:   r.label ?? "unreliable",
+      quality: r.quality_score ?? 0,
     }));
+
+  // Deduplicate X-axis labels by sampling — show at most ~8 ticks
+  const acetoneTickInterval = acetoneData.length > 8
+    ? Math.floor(acetoneData.length / 8)
+    : 0;
 
   const weightData = (weight ?? []).map((w) => ({
     date:  fmt(w.ts),
     value: +w.kg.toFixed(1),
   }));
 
+  // Only show temp/humidity columns when sensor actually provides that data
+  const hasTemp     = (dailyStats ?? []).some(d => d.avg_temp_c != null);
+  const hasHumidity = (dailyStats ?? []).some(d => d.avg_humidity_pct != null);
+
   return (
     <div className="max-w-2xl mx-auto px-4 pt-12 md:pt-6 pb-6 space-y-5">
-      {/* Title + range picker on separate rows to avoid clash with lang switcher */}
       <div>
-        <h1 className="text-2xl font-semibold text-charcoal-500 tracking-tight">{t("trends.title")}</h1>
-        <div className="mt-3 inline-flex gap-1 rounded-xl bg-surface-2 border border-border-soft p-1">
+        <h1 className="text-2xl font-semibold text-text-primary tracking-tight">{t("trends.title")}</h1>
+        <div className="mt-3 inline-flex gap-1 rounded-xl bg-bg-elevated border border-border-soft p-1">
           {RANGES.map(({ label, days: d }) => (
             <button
               key={d}
@@ -137,8 +167,8 @@ export default function TrendsPage() {
               className={twMerge(
                 "rounded-lg px-3 py-1.5 text-xs font-medium transition-all",
                 days === d
-                  ? "bg-white text-mint-700 shadow-sm"
-                  : "text-muted hover:text-charcoal-500"
+                  ? "bg-bg-raised text-mint-500 shadow-sm"
+                  : "text-muted hover:text-text-primary"
               )}
             >
               {label}
@@ -152,46 +182,31 @@ export default function TrendsPage() {
         <CardContent className="pt-5">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h2 className="font-semibold text-charcoal-500 tracking-tight">{t("trends.ketoneTitle")}</h2>
+              <h2 className="font-semibold text-text-primary tracking-tight">{t("trends.ketoneTitle")}</h2>
               <p className="text-xs text-muted mt-0.5">mmol/L</p>
             </div>
             {ketoneData.length > 0 && (
               <Badge variant="mint">
                 {t("trends.avg")}{" "}
-                {(
-                  ketoneData.reduce((s, d) => s + d.value, 0) /
-                  ketoneData.length
-                ).toFixed(2)}{" "}
+                {(ketoneData.reduce((s, d) => s + d.value, 0) / ketoneData.length).toFixed(2)}{" "}
                 mmol/L
               </Badge>
             )}
           </div>
 
           {kLoading ? (
-            <div className="h-40 flex items-center justify-center">
-              <div className="h-6 w-6 animate-spin rounded-full border-2 border-mint-500 border-t-transparent" />
-            </div>
+            <ChartSkeleton />
           ) : ketoneData.length === 0 ? (
             <EmptyChart label={t("trends.emptyKetone")} />
           ) : (
             <ResponsiveContainer width="100%" height={180}>
               <LineChart data={ketoneData} margin={{ left: -20, right: 8 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#EEEDE8" />
-                <XAxis dataKey="date" tick={{ fontSize: 11, fill: "#6B6B65" }} stroke="#D9D7D0" />
-                <YAxis domain={[0, "auto"]} tick={{ fontSize: 11, fill: "#6B6B65" }} stroke="#D9D7D0" />
-                <Tooltip
-                  contentStyle={{ borderRadius: 10, border: "1px solid #EEEDE8", fontSize: 12 }}
-                  formatter={(v) => [`${v} mmol/L`, t("trends.ketoneTitle")]}
-                />
+                <CartesianGrid strokeDasharray="3 3" stroke={gridColor} />
+                <XAxis dataKey="date" tick={{ fontSize: 11, fill: tickColor }} stroke={axisColor} />
+                <YAxis domain={[0, "auto"]} tick={{ fontSize: 11, fill: tickColor }} stroke={axisColor} />
+                <Tooltip contentStyle={tooltipStyle} formatter={(v) => [`${v} mmol/L`, t("trends.ketoneTitle")]} />
                 <ReferenceLine y={0.5} stroke="#00C896" strokeDasharray="4 3" label={{ value: t("trends.ketosis"), fontSize: 10, fill: "#009B74" }} />
-                <Line
-                  type="monotone"
-                  dataKey="value"
-                  stroke="#00C896"
-                  strokeWidth={2}
-                  dot={{ fill: "#00C896", r: 3 }}
-                  activeDot={{ r: 5 }}
-                />
+                <Line type="monotone" dataKey="value" stroke="#00C896" strokeWidth={2} dot={{ fill: "#00C896", r: 3 }} activeDot={{ r: 5 }} />
               </LineChart>
             </ResponsiveContainer>
           )}
@@ -203,7 +218,7 @@ export default function TrendsPage() {
         <CardContent className="pt-5">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <h2 className="font-semibold text-charcoal-500 tracking-tight">{t("trends.weightTitle")}</h2>
+              <h2 className="font-semibold text-text-primary tracking-tight">{t("trends.weightTitle")}</h2>
               <p className="text-xs text-muted mt-0.5">kg</p>
             </div>
             {weightData.length > 0 && (
@@ -214,29 +229,17 @@ export default function TrendsPage() {
           </div>
 
           {wLoading ? (
-            <div className="h-40 flex items-center justify-center">
-              <div className="h-6 w-6 animate-spin rounded-full border-2 border-mint-500 border-t-transparent" />
-            </div>
+            <ChartSkeleton />
           ) : weightData.length === 0 ? (
             <EmptyChart label={t("trends.emptyWeight")} />
           ) : (
             <ResponsiveContainer width="100%" height={180}>
               <LineChart data={weightData} margin={{ left: -20, right: 8 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#EEEDE8" />
-                <XAxis dataKey="date" tick={{ fontSize: 11, fill: "#6B6B65" }} stroke="#D9D7D0" />
-                <YAxis domain={["auto", "auto"]} tick={{ fontSize: 11, fill: "#6B6B65" }} stroke="#D9D7D0" />
-                <Tooltip
-                  contentStyle={{ borderRadius: 10, border: "1px solid #EEEDE8", fontSize: 12 }}
-                  formatter={(v) => [`${v} kg`, t("trends.weightTitle")]}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="value"
-                  stroke="#B08D57"
-                  strokeWidth={2}
-                  dot={{ fill: "#B08D57", r: 3 }}
-                  activeDot={{ r: 5 }}
-                />
+                <CartesianGrid strokeDasharray="3 3" stroke={gridColor} />
+                <XAxis dataKey="date" tick={{ fontSize: 11, fill: tickColor }} stroke={axisColor} />
+                <YAxis domain={["auto", "auto"]} tick={{ fontSize: 11, fill: tickColor }} stroke={axisColor} />
+                <Tooltip contentStyle={tooltipStyle} formatter={(v) => [`${v} kg`, t("trends.weightTitle")]} />
+                <Line type="monotone" dataKey="value" stroke="#B08D57" strokeWidth={2} dot={{ fill: "#B08D57", r: 3 }} activeDot={{ r: 5 }} />
               </LineChart>
             </ResponsiveContainer>
           )}
@@ -251,7 +254,7 @@ export default function TrendsPage() {
               <div>
                 <div className="flex items-center gap-2">
                   <Wind size={14} className="text-mint-500" strokeWidth={1.6} />
-                  <h2 className="font-semibold text-charcoal-500 tracking-tight">Breath Acetone</h2>
+                  <h2 className="font-semibold text-text-primary tracking-tight">Breath Acetone</h2>
                 </div>
                 <p className="text-xs text-muted mt-0.5">{acUnitLbl} — TGS1820</p>
               </div>
@@ -265,7 +268,7 @@ export default function TrendsPage() {
                   <select
                     value={effectiveDevice ?? ""}
                     onChange={(e) => setSelectedDevice(e.target.value || null)}
-                    className="text-xs border border-border-soft rounded-lg px-2 py-1 text-charcoal-500 bg-surface-2 focus:outline-none"
+                    className="text-xs border border-border-soft rounded-lg px-2 py-1 text-text-primary bg-bg-elevated focus:outline-none"
                   >
                     {devices!.map((d) => (
                       <option key={d.id} value={d.id}>
@@ -278,20 +281,24 @@ export default function TrendsPage() {
             </div>
 
             {sLoading ? (
-              <div className="h-40 flex items-center justify-center">
-                <div className="h-6 w-6 animate-spin rounded-full border-2 border-mint-500 border-t-transparent" />
-              </div>
+              <ChartSkeleton />
             ) : acetoneData.length === 0 ? (
               <EmptyChart label="ยังไม่มีข้อมูล breath acetone" />
             ) : (
               <>
                 <ResponsiveContainer width="100%" height={180}>
                   <LineChart data={acetoneData} margin={{ left: -20, right: 8 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#EEEDE8" />
-                    <XAxis dataKey="date" tick={{ fontSize: 11, fill: "#6B6B65" }} stroke="#D9D7D0" />
-                    <YAxis domain={[0, "auto"]} tick={{ fontSize: 11, fill: "#6B6B65" }} stroke="#D9D7D0" />
+                    <CartesianGrid strokeDasharray="3 3" stroke={gridColor} />
+                    <XAxis
+                      dataKey="date"
+                      tick={{ fontSize: 11, fill: tickColor }}
+                      stroke={axisColor}
+                      interval={acetoneTickInterval}
+                      minTickGap={60}
+                    />
+                    <YAxis domain={[0, "auto"]} tick={{ fontSize: 11, fill: tickColor }} stroke={axisColor} />
                     <Tooltip
-                      contentStyle={{ borderRadius: 10, border: "1px solid #EEEDE8", fontSize: 12 }}
+                      contentStyle={tooltipStyle}
                       formatter={(v, _name, props) => [
                         `${v} ${acUnitLbl} (${props.payload?.label ?? ""})`,
                         "Acetone",
@@ -307,7 +314,7 @@ export default function TrendsPage() {
                       dot={(props) => {
                         const { cx, cy, payload } = props;
                         const color = ACETONE_ZONE_COLOR[payload.label] ?? "#9CA3AF";
-                        return <circle key={`dot-${cx}-${cy}`} cx={cx} cy={cy} r={4} fill={color} stroke="white" strokeWidth={1.5} />;
+                        return <circle key={`dot-${cx}-${cy}`} cx={cx} cy={cy} r={4} fill={color} stroke={isDark ? "#1F1F1F" : "white"} strokeWidth={1.5} />;
                       }}
                       activeDot={{ r: 6 }}
                     />
@@ -338,7 +345,7 @@ export default function TrendsPage() {
           <CardContent className="pt-5">
             <div className="flex items-center justify-between mb-3">
               <div>
-                <h2 className="font-semibold text-charcoal-500 tracking-tight">สรุปรายวัน</h2>
+                <h2 className="font-semibold text-text-primary tracking-tight">สรุปรายวัน</h2>
                 <p className="text-xs text-muted mt-0.5">
                   {days === 1 ? "วันนี้" : `${days} วันล่าสุด`} · หน่วย acetone: {acUnitLbl}
                 </p>
@@ -361,39 +368,43 @@ export default function TrendsPage() {
                       <th className="text-right py-2 font-semibold">ครั้ง</th>
                       <th className="text-right py-2 font-semibold">เฉลี่ย</th>
                       <th className="text-right py-2 font-semibold">สูงสุด</th>
-                      <th className="text-right py-2 font-semibold">อุณหภูมิ</th>
-                      <th className="text-right py-2 font-semibold">ความชื้น</th>
+                      {hasTemp     && <th className="text-right py-2 font-semibold">อุณหภูมิ</th>}
+                      {hasHumidity && <th className="text-right py-2 font-semibold">ความชื้น</th>}
                     </tr>
                   </thead>
                   <tbody>
                     {dailyStats!.map((d) => {
-                    const avg = d.avg_acetone_delta;
-                    const max = d.max_acetone_delta;
-                    const zoneColor = ACETONE_ZONE_COLOR[d.dominant_label ?? "unreliable"] ?? "#9CA3AF";
-                    return (
-                        <tr key={d.date} className="border-b border-border-soft/60 hover:bg-surface-2 transition-colors">
-                          <td className="py-2.5 text-charcoal-500 font-medium">
+                      const avg = d.avg_acetone_delta;
+                      const max = d.max_acetone_delta;
+                      const zoneColor = ACETONE_ZONE_COLOR[d.dominant_label ?? "unreliable"] ?? "#9CA3AF";
+                      return (
+                        <tr key={d.date} className="border-b border-border-soft/60 hover:bg-bg-raised transition-colors">
+                          <td className="py-2.5 text-text-primary font-medium">
                             <div className="flex items-center gap-1.5">
                               <span className="h-2 w-2 rounded-full shrink-0" style={{ background: zoneColor }} />
                               {new Date(d.date).toLocaleDateString(dateLocale, { day: "numeric", month: "short" })}
                             </div>
                           </td>
-                          <td className="py-2.5 text-right text-charcoal-500 font-mono">{d.count}</td>
-                          <td className="py-2.5 text-right text-charcoal-500 font-mono font-semibold">
+                          <td className="py-2.5 text-right text-text-primary font-mono">{d.count}</td>
+                          <td className="py-2.5 text-right text-text-primary font-mono font-semibold">
                             {avg != null ? convertFromMv(avg, acUnit).toFixed(acDecimals) : "—"}
                           </td>
                           <td className="py-2.5 text-right text-muted font-mono">
                             {max != null ? convertFromMv(max, acUnit).toFixed(acDecimals) : "—"}
                           </td>
-                          <td className="py-2.5 text-right text-muted font-mono">
-                            {d.avg_temp_c != null ? `${d.avg_temp_c.toFixed(1)}°C` : "—"}
-                          </td>
-                          <td className="py-2.5 text-right text-muted font-mono">
-                            {d.avg_humidity_pct != null ? `${d.avg_humidity_pct.toFixed(0)}%` : "—"}
-                          </td>
+                          {hasTemp && (
+                            <td className="py-2.5 text-right text-muted font-mono">
+                              {d.avg_temp_c != null ? `${d.avg_temp_c.toFixed(1)}°C` : "—"}
+                            </td>
+                          )}
+                          {hasHumidity && (
+                            <td className="py-2.5 text-right text-muted font-mono">
+                              {d.avg_humidity_pct != null ? `${d.avg_humidity_pct.toFixed(0)}%` : "—"}
+                            </td>
+                          )}
                         </tr>
-                    );
-                  })}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

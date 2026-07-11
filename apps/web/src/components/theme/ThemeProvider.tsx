@@ -40,7 +40,10 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const a = localStorage.getItem("accent") as AccentColor | null;
     const c = localStorage.getItem("cardStyle") as CardStyle | null;
-    if (a) setAccentState(a);
+    if (a) {
+      setAccentState(a);
+      document.documentElement.style.setProperty("--color-mint-500", ACCENT_COLORS[a]);
+    }
     if (c) setCardStyleState(c);
   }, []);
 

@@ -44,10 +44,10 @@ type ActivityForm = z.infer<typeof activitySchema>;
 function FormHeader({ Icon, title, subtitle }: { Icon: LucideIcon; title: string; subtitle?: string }) {
   return (
     <div className="text-center py-4">
-      <div className="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-mint-50 border border-mint-100">
-        <Icon size={24} className="text-mint-600" strokeWidth={1.4} />
+      <div className="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-mint-500/10 border border-mint-500/20">
+        <Icon size={24} className="text-mint-500" strokeWidth={1.4} />
       </div>
-      <h2 className="text-lg font-semibold text-charcoal-500 mt-3 tracking-tight">{title}</h2>
+      <h2 className="text-lg font-semibold text-text-primary mt-3 tracking-tight">{title}</h2>
       {subtitle && <p className="text-xs text-muted mt-1 leading-relaxed">{subtitle}</p>}
     </div>
   );
@@ -99,20 +99,20 @@ function KetoneForm() {
           label={t("log.ketone.value")}
           type="number"
           step="0.01"
-          placeholder="0.0"
-          className={twMerge("stat-display text-4xl text-center h-16 text-charcoal-500")}
+          placeholder="1.5"
+          className={twMerge("stat-display text-4xl text-center h-16 text-text-primary placeholder:text-text-disabled")}
           error={errors.value_mmol ? t("log.ketone.errMax") : undefined}
           {...register("value_mmol")}
         />
       </div>
 
       <div className="space-y-1">
-        <p className="text-sm font-medium text-charcoal-500/80">{t("log.ketone.source")}</p>
+        <p className="text-sm font-medium text-text-secondary">{t("log.ketone.source")}</p>
         <div className="flex gap-2">
           {KETONE_SOURCES.map(({ value, Icon, key }) => (
             <label
               key={value}
-              className="flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-xl border border-border-soft py-2 text-sm has-[:checked]:border-mint-500 has-[:checked]:bg-mint-50/50 has-[:checked]:text-mint-700"
+              className="flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-xl border border-border-soft py-2 text-sm has-[:checked]:border-mint-500 has-[:checked]:bg-mint-500/10 has-[:checked]:text-mint-500"
             >
               <input type="radio" name="source" value={value} className="sr-only" defaultChecked={value === "manual"} />
               <Icon size={15} strokeWidth={1.6} />
@@ -158,7 +158,7 @@ function WeightFormComp() {
         type="number"
         step="0.1"
         placeholder="65.0"
-        className={twMerge("stat-display text-4xl text-center h-16 text-charcoal-500")}
+        className={twMerge("stat-display text-4xl text-center h-16 text-text-primary placeholder:text-text-disabled")}
         error={errors.kg?.message}
         {...register("kg")}
       />
@@ -245,12 +245,12 @@ function ActivityFormComp() {
       <FormHeader Icon={Activity} title={t("log.activity.title")} />
 
       <div className="space-y-1">
-        <p className="text-sm font-medium text-charcoal-500/80">{t("log.activity.kind")}</p>
+        <p className="text-sm font-medium text-text-secondary">{t("log.activity.kind")}</p>
         <div className="grid grid-cols-3 gap-2">
           {ACTIVITY_KINDS.map(({ value, Icon }) => (
             <label
               key={value}
-              className="flex flex-col items-center justify-center gap-1 cursor-pointer rounded-xl border border-border-soft py-3 text-xs has-[:checked]:border-mint-500 has-[:checked]:bg-mint-50/50 has-[:checked]:text-mint-700"
+              className="flex flex-col items-center justify-center gap-1 cursor-pointer rounded-xl border border-border-soft py-3 text-xs has-[:checked]:border-mint-500 has-[:checked]:bg-mint-500/10 has-[:checked]:text-mint-500"
             >
               <input type="radio" value={value} className="sr-only" {...register("kind")} />
               <Icon size={18} strokeWidth={1.5} />
@@ -294,7 +294,7 @@ export default function LogPage() {
 
   return (
     <div className="max-w-md mx-auto px-4 pt-12 md:pt-6 pb-6">
-      <h1 className="text-2xl font-semibold text-charcoal-500 mb-5 tracking-tight">{t("log.title")}</h1>
+      <h1 className="text-2xl font-semibold text-text-primary mb-5 tracking-tight">{t("log.title")}</h1>
 
       <Tabs defaultValue={defaultTab}>
         <TabsList className="w-full mb-5">

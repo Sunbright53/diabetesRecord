@@ -14,6 +14,20 @@ import { unitLabel, useUnits } from "@/lib/units";
 
 const XP_PER_LEVEL = 100;
 
+function StatSkeleton() {
+  return (
+    <div className="grid grid-cols-3 gap-3">
+      {[0, 1, 2].map((i) => (
+        <div key={i} className="bg-bg-elevated rounded-2xl p-3 text-center animate-pulse">
+          <div className="h-4 w-4 rounded-full bg-bg-raised mx-auto mb-1" />
+          <div className="h-7 bg-bg-raised rounded-lg mx-2 mb-1" />
+          <div className="h-3 bg-bg-raised rounded w-10 mx-auto" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function MePage() {
   const { user, logout } = useAuth();
   const { t, locale, setLocale } = useT();
@@ -26,6 +40,7 @@ export default function MePage() {
 
   const goalKey = user?.profile?.goal_type ?? "monitor";
   const pct = xp ? Math.round((xp.xp_in_level / XP_PER_LEVEL) * 100) : 0;
+  const statsLoading = !xp || !streak || !badges;
 
   return (
     <div className="max-w-md mx-auto px-4 pt-5 pb-24 space-y-5">
@@ -45,7 +60,7 @@ export default function MePage() {
         </div>
 
         {/* XP bar */}
-        {xp && (
+        {xp ? (
           <div className="mt-4 space-y-1.5">
             <div className="flex items-center justify-between text-xs text-text-muted">
               <span className="flex items-center gap-1"><Star size={11} className="text-gold-500" /> Lv.{xp.level} — {xp.level_name}</span>
@@ -55,36 +70,43 @@ export default function MePage() {
               <div className="h-full rounded-full bg-gradient-to-r from-gold-300 to-gold-500 transition-all duration-700" style={{ width: `${pct}%` }} />
             </div>
           </div>
+        ) : (
+          <div className="mt-4 animate-pulse space-y-1.5">
+            <div className="h-3 bg-bg-raised rounded w-1/2" />
+            <div className="h-1.5 bg-bg-raised rounded-full" />
+          </div>
         )}
       </div>
 
       {/* Stats row */}
-      <div className="grid grid-cols-3 gap-3">
-        <div className="bg-bg-elevated rounded-2xl p-3 text-center">
-          <div className="flex items-center justify-center mb-1">
-            <Flame size={14} className="text-peach-500" />
+      {statsLoading ? <StatSkeleton /> : (
+        <div className="grid grid-cols-3 gap-3">
+          <div className="bg-bg-elevated rounded-2xl p-3 text-center">
+            <div className="flex items-center justify-center mb-1">
+              <Flame size={14} className="text-peach-500" />
+            </div>
+            <p className="text-2xl font-bold text-text-primary">{streak!.current}</p>
+            <p className="text-xs text-text-muted mt-0.5 uppercase tracking-wider">Streak</p>
           </div>
-          <p className="text-2xl font-bold text-text-primary">{streak?.current ?? 0}</p>
-          <p className="text-xs text-text-muted mt-0.5 uppercase tracking-wider">Streak</p>
-        </div>
-        <div className="bg-bg-elevated rounded-2xl p-3 text-center">
-          <div className="flex items-center justify-center mb-1">
-            <Star size={14} className="text-gold-500" />
+          <div className="bg-bg-elevated rounded-2xl p-3 text-center">
+            <div className="flex items-center justify-center mb-1">
+              <Star size={14} className="text-gold-500" />
+            </div>
+            <p className="text-2xl font-bold text-text-primary">{xp!.total}</p>
+            <p className="text-xs text-text-muted mt-0.5 uppercase tracking-wider">XP</p>
           </div>
-          <p className="text-2xl font-bold text-text-primary">{xp?.total ?? 0}</p>
-          <p className="text-xs text-text-muted mt-0.5 uppercase tracking-wider">XP</p>
-        </div>
-        <div className="bg-bg-elevated rounded-2xl p-3 text-center">
-          <div className="flex items-center justify-center mb-1">
-            <Trophy size={14} className="text-gold-500" />
+          <div className="bg-bg-elevated rounded-2xl p-3 text-center">
+            <div className="flex items-center justify-center mb-1">
+              <Trophy size={14} className="text-gold-500" />
+            </div>
+            <p className="text-2xl font-bold text-text-primary">{badges!.length}</p>
+            <p className="text-xs text-text-muted mt-0.5 uppercase tracking-wider">Badges</p>
           </div>
-          <p className="text-2xl font-bold text-text-primary">{badges?.length ?? 0}</p>
-          <p className="text-xs text-text-muted mt-0.5 uppercase tracking-wider">Badges</p>
         </div>
-      </div>
+      )}
 
       {/* Competition coming soon */}
-      <div className="bg-bg-elevated rounded-2xl p-4 flex items-center gap-3 opacity-50">
+      <div className="bg-bg-elevated rounded-2xl p-4 flex items-center gap-3 opacity-40">
         <div className="h-9 w-9 rounded-xl bg-gold-500/20 flex items-center justify-center">
           <Trophy size={16} className="text-gold-500" />
         </div>
@@ -111,7 +133,7 @@ export default function MePage() {
 
       {/* Menu */}
       <div className="bg-bg-elevated rounded-2xl overflow-hidden">
-        {/* Admin Console — only for admin email */}
+        {/* Admin Console — only for admin users */}
         {user?.is_admin && (
           <Link href="/admin" className="flex items-center gap-3 px-4 py-3.5 border-b border-border-soft hover:bg-bg-raised transition-colors">
             <div className="h-8 w-8 rounded-lg bg-gold-500/20 flex items-center justify-center">
@@ -123,7 +145,7 @@ export default function MePage() {
           </Link>
         )}
 
-        {/* Theme & appearance — functional */}
+        {/* Theme & appearance */}
         <Link href="/me/settings/appearance" className="flex items-center gap-3 px-4 py-3.5 border-b border-border-soft hover:bg-bg-raised transition-colors">
           <div className="h-8 w-8 rounded-lg bg-mint-500/20 flex items-center justify-center">
             <Palette size={15} className="text-mint-500" />
@@ -132,22 +154,22 @@ export default function MePage() {
           <ChevronRight size={14} className="text-text-disabled" />
         </Link>
 
-        {/* Acetone units — functional */}
+        {/* Acetone units */}
         <Link href="/me/settings/units" className="flex items-center gap-3 px-4 py-3.5 border-b border-border-soft hover:bg-bg-raised transition-colors">
           <div className="h-8 w-8 rounded-lg bg-blue-500/20 flex items-center justify-center">
             <Ruler size={15} className="text-blue-400" />
           </div>
-          <span className="flex-1 text-sm text-text-primary font-medium">หน่วยของ Acetone</span>
+          <span className="flex-1 text-sm text-text-primary font-medium">Acetone units</span>
           <span className="text-xs text-text-muted font-mono bg-bg-raised px-2 py-0.5 rounded-full">
             {unitLabel(acUnit)}
           </span>
           <ChevronRight size={14} className="text-text-disabled" />
         </Link>
 
-        {/* Language — functional toggle */}
+        {/* Language toggle */}
         <button
           onClick={() => setLocale(locale === "th" ? "en" : "th")}
-          className="w-full flex items-center gap-3 px-4 py-3.5 border-b border-border-soft hover:bg-bg-raised transition-colors"
+          className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-bg-raised transition-colors"
         >
           <div className="h-8 w-8 rounded-lg bg-bg-raised flex items-center justify-center">
             <Globe size={15} className="text-text-muted" />
@@ -157,26 +179,6 @@ export default function MePage() {
             {locale === "th" ? "ไทย → EN" : "EN → ไทย"}
           </span>
         </button>
-
-        {/* Coming soon items */}
-        {[
-          { label: "App settings" },
-          { label: "Third-party data" },
-          { label: "Permissions" },
-          { label: "Feedback" },
-          { label: "About" },
-        ].map(({ label }, idx, arr) => (
-          <div
-            key={label}
-            className={`flex items-center gap-3 px-4 py-3.5 opacity-50 ${idx < arr.length - 1 ? "border-b border-border-soft" : ""}`}
-          >
-            <div className="h-8 w-8 rounded-lg bg-bg-raised flex items-center justify-center">
-              <span className="text-xs text-text-muted">•</span>
-            </div>
-            <span className="flex-1 text-sm text-text-primary">{label}</span>
-            <span className="text-[10px] text-text-disabled bg-bg-raised px-2 py-0.5 rounded-full">Soon</span>
-          </div>
-        ))}
       </div>
 
       {/* Logout */}

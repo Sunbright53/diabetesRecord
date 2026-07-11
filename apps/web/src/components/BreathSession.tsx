@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Wind, X, RefreshCw } from "lucide-react";
+import { Wind, X, RefreshCw, Flame, Star } from "lucide-react";
 import { toast } from "sonner";
 import { AreaChart, Area, ResponsiveContainer, YAxis } from "recharts";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { AcetoneLabel, LiveReading } from "@/lib/useDeviceStream";
 import { api } from "@/lib/api";
 import { useUnits } from "@/lib/units";
@@ -117,6 +118,7 @@ interface Props {
 
 export default function BreathSession({ liveReading, connected, deviceId, onSessionSaved }: Props) {
   const { format: fmtAcetone, label: unitLbl } = useUnits();
+  const qc = useQueryClient();
   const [phase, setPhase] = useState<Phase>("idle");
   const [progress, setProgress] = useState(0);   // 0-100 within current phase
   const [result, setResult] = useState<SessionSummary | null>(null);
@@ -246,6 +248,10 @@ export default function BreathSession({ liveReading, connected, deviceId, onSess
     setPhase("done");
     toast.success("บันทึกเซสชั่นแล้ว");
     onSavedRef.current?.();
+    // Invalidate gamification so home/profile show fresh streak + XP
+    qc.invalidateQueries({ queryKey: ["me", "xp"] });
+    qc.invalidateQueries({ queryKey: ["me", "streak"] });
+    qc.invalidateQueries({ queryKey: ["me", "quests"] });
   }
 
   async function start() {
@@ -426,6 +432,32 @@ export default function BreathSession({ liveReading, connected, deviceId, onSess
   const lText = LABEL_TH[result.label ?? ""] ?? result.label ?? "—";
 
   return (
+    <DoneCard
+      result={result}
+      lColor={lColor}
+      lText={lText}
+      fmtAcetone={fmtAcetone}
+      unitLbl={unitLbl}
+      onReset={reset}
+    />
+  );
+}
+
+/* ── Done result card — shows measurement + live gamification feedback ── */
+function DoneCard({
+  result, lColor, lText, fmtAcetone, unitLbl, onReset,
+}: {
+  result: SessionSummary;
+  lColor: string;
+  lText: string;
+  fmtAcetone: (v: number) => string;
+  unitLbl: string;
+  onReset: () => void;
+}) {
+  const { data: xpData }     = useQuery({ queryKey: ["me", "xp"],     queryFn: api.gamification.getXP });
+  const { data: streakData } = useQuery({ queryKey: ["me", "streak"], queryFn: api.gamification.getStreak });
+
+  return (
     <div className="py-2">
       <div className="bg-bg-elevated rounded-2xl p-4 space-y-3">
         <div className="flex items-center justify-between">
@@ -436,8 +468,8 @@ export default function BreathSession({ liveReading, connected, deviceId, onSess
         <div className="grid grid-cols-3 gap-2">
           {(
             [
-              { val: fmtAcetone(result.peak_mv),  label: `Peak (${unitLbl})` },
-              { val: fmtAcetone(result.mean_mv),  label: `Mean (${unitLbl})` },
+              { val: fmtAcetone(result.peak_mv),              label: `Peak (${unitLbl})` },
+              { val: fmtAcetone(result.mean_mv),              label: `Mean (${unitLbl})` },
               { val: result.quality_score?.toFixed(0) ?? "—", label: "Quality" },
             ] as const
           ).map(({ val, label }) => (
@@ -454,8 +486,28 @@ export default function BreathSession({ liveReading, connected, deviceId, onSess
           </p>
         )}
 
+        {/* Gamification feedback — refreshes after invalidation */}
+        {(streakData || xpData) && (
+          <div className="bg-mint-500/10 rounded-xl px-3 py-2.5 flex items-center justify-center gap-5">
+            {streakData && (
+              <div className="flex items-center gap-1.5">
+                <Flame size={14} className="text-peach-500" />
+                <span className="text-sm font-bold text-text-primary">{streakData.current}</span>
+                <span className="text-xs text-text-muted">day streak</span>
+              </div>
+            )}
+            {xpData && (
+              <div className="flex items-center gap-1.5">
+                <Star size={14} className="text-gold-500" />
+                <span className="text-sm font-bold text-text-primary">{xpData.total.toLocaleString()}</span>
+                <span className="text-xs text-text-muted">XP total</span>
+              </div>
+            )}
+          </div>
+        )}
+
         <button
-          onClick={reset}
+          onClick={onReset}
           className="w-full rounded-xl border border-border-soft text-text-muted text-sm py-2.5 flex items-center justify-center gap-2 hover:bg-bg-raised transition-colors"
         >
           <RefreshCw size={14} />

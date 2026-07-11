@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -11,7 +12,7 @@ import { AcetoneRing } from "@/components/cards/AcetoneRing";
 import { TodayMetricCard } from "@/components/cards/TodayMetricCard";
 import { CategoryCard } from "@/components/cards/CategoryCard";
 import Link from "next/link";
-import { Flame, ChevronRight } from "lucide-react";
+import { Flame, ChevronRight, Check } from "lucide-react";
 
 export default function HomePage() {
   const { user } = useAuth();
@@ -19,17 +20,15 @@ export default function HomePage() {
   const name = user?.profile?.display_name ?? user?.username ?? "—";
   const { reading: liveReading } = useDeviceStream(user?.id);
   const { format: fmtAcetone, label: unitLbl } = useUnits();
+  const [questsOpen, setQuestsOpen] = useState(false);
 
-  // "Live" only if we received a reading within the last 60 seconds
   const liveConnected = !!liveReading &&
     (Date.now() - parseServerTime(liveReading.time).getTime() < 60_000);
 
   const { data: streak } = useQuery({ queryKey: ["me", "streak"], queryFn: api.gamification.getStreak });
-  const { data: xp }    = useQuery({ queryKey: ["me", "xp"],     queryFn: api.gamification.getXP });
+  const { data: xp }     = useQuery({ queryKey: ["me", "xp"],     queryFn: api.gamification.getXP });
   const { data: quests } = useQuery({ queryKey: ["me", "quests"], queryFn: api.gamification.getQuestsToday });
 
-  // Newest owned device OR a shared device this user has claimed — either
-  // path lets us read stats for the physical ESP32.
   const { data: devices } = useQuery({ queryKey: ["sensor", "devices"], queryFn: api.sensor.listDevices });
   const { data: sharedDevices } = useQuery({ queryKey: ["sensor", "shared-devices"], queryFn: api.sensor.listSharedDevices, refetchInterval: 30_000 });
   const deviceId = devices?.[0]?.id ?? sharedDevices?.find((d) => d.claimed_by_me)?.id;
@@ -44,14 +43,11 @@ export default function HomePage() {
   const dateLocale = locale === "th" ? "th-TH" : "en-US";
   const dateStr = new Date().toLocaleDateString(dateLocale, { weekday: "short", day: "numeric", month: "short" });
 
-  // Hero shows today's peak (max) instead of avg: continuous readings include
-  // baseline noise/drift that skews the mean, but peak reflects the highest
-  // acetone level observed during a breath test.
   const heroValue = today?.max_acetone_delta ?? liveReading?.acetone_delta_mv ?? null;
   const heroLabel = today?.dominant_label ?? liveReading?.label ?? null;
   const heroCount = today?.count ?? 0;
 
-  const questDone = quests?.filter((q) => q.completed_at).length ?? 0;
+  const questDone  = quests?.filter((q) => q.completed_at).length ?? 0;
   const questTotal = quests?.length ?? 0;
 
   return (
@@ -62,15 +58,20 @@ export default function HomePage() {
           <p className="text-xs text-text-muted">{dateStr}</p>
           <h1 className="text-xl font-semibold text-text-primary mt-0.5">{t("health.greeting")}, {name}</h1>
         </div>
-        {xp && (
+        {xp ? (
           <div className="text-right">
             <p className="text-xs text-text-muted">Level {xp.level}</p>
             <p className="text-sm font-semibold text-mint-500">{xp.total.toLocaleString()} XP</p>
           </div>
+        ) : (
+          <div className="text-right animate-pulse">
+            <div className="h-3 w-14 bg-bg-elevated rounded mb-1" />
+            <div className="h-4 w-20 bg-bg-elevated rounded" />
+          </div>
         )}
       </div>
 
-      {/* Acetone hero ring — today's average */}
+      {/* Acetone hero ring */}
       <div className="bg-bg-elevated rounded-3xl p-6 flex flex-col items-center gap-4">
         <p className="text-xs text-text-muted font-semibold uppercase tracking-widest">
           BREATH ACETONE · สูงสุดวันนี้
@@ -92,27 +93,60 @@ export default function HomePage() {
         </div>
       </div>
 
-      {/* Streak */}
+      {/* Streak + Quests */}
       <div className="bg-bg-elevated rounded-2xl p-4 flex items-center gap-3">
         <div className="h-10 w-10 rounded-xl bg-peach-500/20 flex items-center justify-center">
           <Flame size={20} className="text-peach-500" />
         </div>
         <div className="flex-1">
           <p className="text-xs text-text-muted uppercase tracking-wider font-medium">Streak</p>
-          <p className="text-xl font-bold text-text-primary">
-            {streak?.current ?? 0}
-            <span className="text-sm font-medium text-text-muted ml-1">days</span>
-          </p>
+          {streak ? (
+            <p className="text-xl font-bold text-text-primary">
+              {streak.current}
+              <span className="text-sm font-medium text-text-muted ml-1">days</span>
+            </p>
+          ) : (
+            <div className="h-7 w-16 bg-bg-raised rounded-lg animate-pulse mt-0.5" />
+          )}
         </div>
         {questTotal > 0 && (
-          <div className="text-right">
+          <button
+            onClick={() => setQuestsOpen((v) => !v)}
+            className="text-right p-2 -m-2 rounded-xl hover:bg-bg-raised transition-colors"
+          >
             <p className="text-xs text-text-muted">Quests</p>
-            <p className="text-sm font-semibold text-text-primary">{questDone}/{questTotal}</p>
-          </div>
+            <p className={`text-sm font-semibold ${questDone === questTotal ? "text-mint-500" : "text-text-primary"}`}>
+              {questDone}/{questTotal}
+            </p>
+          </button>
         )}
       </div>
 
-      {/* Daily entry metrics — tap to log/edit today's value */}
+      {/* Quests expanded panel */}
+      {questsOpen && quests && quests.length > 0 && (
+        <div className="bg-bg-elevated rounded-2xl p-4 space-y-3 -mt-2">
+          <p className="text-xs text-text-muted font-semibold uppercase tracking-widest">Quest วันนี้</p>
+          {quests.map((q) => (
+            <div key={q.id} className="flex items-center gap-3">
+              <div className={`h-5 w-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${q.completed_at ? "bg-mint-500 border-mint-500" : "border-border-strong"}`}>
+                {q.completed_at && <Check size={10} className="text-white" strokeWidth={3} />}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className={`text-sm ${q.completed_at ? "text-text-muted line-through" : "text-text-primary"}`}>
+                  {q.title}
+                </p>
+                <p className="text-xs text-text-disabled">{q.description}</p>
+              </div>
+              <div className="text-right shrink-0">
+                <p className="text-xs text-gold-500 font-semibold">+{q.xp_reward} XP</p>
+                <p className="text-[10px] text-text-disabled font-mono">{q.progress}/{q.target}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Daily entry metrics */}
       <div className="grid grid-cols-3 gap-3">
         <TodayMetricCard kind="weight" />
         <TodayMetricCard kind="steps" />

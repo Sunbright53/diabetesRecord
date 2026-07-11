@@ -15,8 +15,8 @@ import {
 } from "lucide-react";
 
 type MenuItem =
-  | { icon: React.ElementType; label: string; href: string | ((id: string) => string); danger?: boolean }
-  | { icon: React.ElementType; label: string; onClick: () => void; danger?: boolean };
+  | { icon: React.ElementType; label: string; href: string | ((id: string) => string); danger?: boolean; disabled?: boolean }
+  | { icon: React.ElementType; label: string; onClick: () => void; danger?: boolean; disabled?: boolean };
 
 type LinkStatus = "waiting" | "live" | "idle" | "offline";
 
@@ -144,15 +144,18 @@ export default function DevicePage() {
     }
   }
 
-  const menuItems: MenuItem[] = [
-    { icon: Download,    label: "Download firmware (.ino)",  href: (id: string) => `/me/device/${id}/firmware` },
-    { icon: FlaskConical, label: "Calibration & reports",   href: (id: string) => `/me/device/${id}/report` },
-    { icon: Bell,        label: "Notifications & alerts",   href: "#" },
-    { icon: Database,    label: "Sensor data & history",    href: "#" },
-    { icon: Wrench,      label: "Sensor settings",          href: "#" },
-    { icon: Shield,      label: "Data privacy",             href: "#" },
-    { icon: Settings,    label: "Advanced settings",        href: "#" },
-    { icon: RefreshCw,   label: "รีเซ็ต WiFi ของอุปกรณ์",  onClick: () => setResetOpen(true), danger: true },
+  const basicMenuItems: MenuItem[] = [
+    { icon: FlaskConical, label: "Calibration & reports",  href: (id: string) => `/me/device/${id}/report` },
+    { icon: Bell,         label: "Notifications & alerts", href: "#", disabled: true },
+    { icon: Database,     label: "Sensor data & history",  href: "#", disabled: true },
+  ];
+
+  const advancedMenuItems: MenuItem[] = [
+    { icon: Download,  label: "Download firmware (.ino)", href: (id: string) => `/me/device/${id}/firmware` },
+    { icon: Wrench,    label: "Sensor settings",          href: "#", disabled: true },
+    { icon: Shield,    label: "Data privacy",             href: "#", disabled: true },
+    { icon: Settings,  label: "Advanced settings",        href: "#", disabled: true },
+    { icon: RefreshCw, label: "Reset device WiFi",        onClick: () => setResetOpen(true), danger: true },
   ];
 
   return (
@@ -292,35 +295,56 @@ export default function DevicePage() {
         </div>
       )}
 
-      {/* Menu */}
+      {/* Menu — Basic */}
       {device && (
         <div className="bg-bg-elevated rounded-2xl overflow-hidden">
-          <p className="text-xs text-text-muted font-semibold uppercase tracking-widest px-4 pt-4 pb-2">Menu</p>
-          {menuItems.map((item, idx) => {
-            const isLast = idx === menuItems.length - 1;
-            const rowClass = `flex items-center gap-3 px-4 py-3.5 hover:bg-bg-raised transition-colors ${!isLast ? "border-b border-border-soft" : ""}`;
+          <p className="text-xs text-text-muted font-semibold uppercase tracking-widest px-4 pt-4 pb-2">Device</p>
+          {basicMenuItems.map((item, idx) => {
+            const isLast = idx === basicMenuItems.length - 1;
+            const rowClass = `flex items-center gap-3 px-4 py-3.5 transition-colors ${!isLast ? "border-b border-border-soft" : ""} ${item.disabled ? "opacity-40 pointer-events-none" : "hover:bg-bg-raised"}`;
+            const inner = (
+              <>
+                <div className="h-8 w-8 rounded-lg bg-bg-raised flex items-center justify-center">
+                  <item.icon size={15} className="text-text-muted" strokeWidth={1.6} />
+                </div>
+                <span className="flex-1 text-sm text-text-primary">{item.label}</span>
+                {item.disabled
+                  ? <span className="text-[10px] text-text-disabled bg-bg-raised px-2 py-0.5 rounded-full">Soon</span>
+                  : <ChevronRight size={14} className="text-text-disabled" />}
+              </>
+            );
+            if ("onClick" in item) {
+              return <button key={item.label} onClick={item.onClick} className={`w-full text-left ${rowClass}`}>{inner}</button>;
+            }
+            const resolvedHref = typeof item.href === "function" ? item.href(device.id) : item.href;
+            return <Link key={item.label} href={resolvedHref} className={rowClass}>{inner}</Link>;
+          })}
+        </div>
+      )}
+
+      {/* Menu — Advanced */}
+      {device && (
+        <div className="bg-bg-elevated rounded-2xl overflow-hidden">
+          <p className="text-xs text-text-muted font-semibold uppercase tracking-widest px-4 pt-4 pb-2">Advanced</p>
+          {advancedMenuItems.map((item, idx) => {
+            const isLast = idx === advancedMenuItems.length - 1;
+            const rowClass = `flex items-center gap-3 px-4 py-3.5 transition-colors ${!isLast ? "border-b border-border-soft" : ""} ${item.disabled ? "opacity-40 pointer-events-none" : "hover:bg-bg-raised"}`;
             const inner = (
               <>
                 <div className="h-8 w-8 rounded-lg bg-bg-raised flex items-center justify-center">
                   <item.icon size={15} className={item.danger ? "text-red-400" : "text-text-muted"} strokeWidth={1.6} />
                 </div>
                 <span className={`flex-1 text-sm ${item.danger ? "text-red-400" : "text-text-primary"}`}>{item.label}</span>
-                <ChevronRight size={14} className="text-text-disabled" />
+                {item.disabled
+                  ? <span className="text-[10px] text-text-disabled bg-bg-raised px-2 py-0.5 rounded-full">Soon</span>
+                  : <ChevronRight size={14} className="text-text-disabled" />}
               </>
             );
             if ("onClick" in item) {
-              return (
-                <button key={item.label} onClick={item.onClick} className={`w-full text-left ${rowClass}`}>
-                  {inner}
-                </button>
-              );
+              return <button key={item.label} onClick={item.onClick} className={`w-full text-left ${rowClass}`}>{inner}</button>;
             }
             const resolvedHref = typeof item.href === "function" ? item.href(device.id) : item.href;
-            return (
-              <Link key={item.label} href={resolvedHref} className={rowClass}>
-                {inner}
-              </Link>
-            );
+            return <Link key={item.label} href={resolvedHref} className={rowClass}>{inner}</Link>;
           })}
         </div>
       )}
