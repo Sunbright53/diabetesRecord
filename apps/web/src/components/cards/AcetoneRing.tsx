@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import { formatAcetone, unitLabel, useUnits } from "@/lib/units";
+import { LABEL_STYLE, LABEL_TH } from "@/lib/riskLabel";
 
 interface Props {
   value: number | null;
@@ -9,25 +10,9 @@ interface Props {
   size?: number;
 }
 
-const LABEL_CONFIG: Record<string, { color: string; grad: [string, string] }> = {
-  clean:      { color: "#38BDF8", grad: ["#38BDF8", "#7DD3FC"] },
-  low:        { color: "#00C896", grad: ["#00C896", "#22D6B2"] },
-  moderate:   { color: "#F59E0B", grad: ["#F59E0B", "#FCD34D"] },
-  high:       { color: "#EF4444", grad: ["#EF4444", "#F87171"] },
-  unreliable: { color: "#4A4A4A", grad: ["#4A4A4A", "#7A7A7A"] },
-};
-
-const LABEL_TH: Record<string, string> = {
-  clean: "อากาศสะอาด",
-  low: "ระดับต่ำ",
-  moderate: "ปานกลาง",
-  high: "ระดับสูง",
-  unreliable: "ไม่แน่ใจ",
-};
-
 export function AcetoneRing({ value, label, size = 200 }: Props) {
   const { unit } = useUnits();
-  const cfg = LABEL_CONFIG[label ?? ""] ?? LABEL_CONFIG.unreliable;
+  const cfg = LABEL_STYLE[label ?? ""] ?? LABEL_STYLE.unreliable;
   const r = (size / 2) - 16;
   const circumference = 2 * Math.PI * r;
 

@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from app.core.deps import get_current_user
 from app.db.session import get_db
 from app.models.user import User
-from app.models.health import Device, SensorReading
+from app.models.health import Device, DeviceCalibration, SensorReading
 from app.services import ml_inference, llm_guardrail
 
 router = APIRouter(prefix="/ai", tags=["ai"])
@@ -45,6 +45,34 @@ class TrendResponse(BaseModel):
     predicted_points: List[dict]
     confidence: float
     n_readings_used: int
+
+
+class LstmPredictRequest(BaseModel):
+    device_id: UUID
+    # Optional: caller can supply the sequence explicitly (else last-5 from DB)
+    sequence: Optional[List[dict]] = None
+
+
+class LstmPredictResponse(BaseModel):
+    label: Optional[str]
+    metabolic_risk_index: Optional[int]
+    confidence_score: float
+    model_used: str
+    recalibration_needed: bool
+    sequence_length: int
+    fallback_reason: Optional[str] = None
+
+
+class DriftResponse(BaseModel):
+    device_id: UUID
+    drift_detected: bool
+    severity: str
+    confidence: float
+    recommendation: str
+    drift_pct: Optional[float]
+    baseline_voc: Optional[float] = None
+    latest_voc: Optional[float] = None
+    n_calibrations_used: int
 
 
 class ChatRequest(BaseModel):
@@ -192,4 +220,96 @@ async def chat(
         reply=safe_reply,
         refusal=False,
         disclaimer_appended=True,
+    )
+
+
+# ─── POST /ai/predict/lstm ────────────────────────────────────────────────────
+
+@router.post("/predict/lstm", response_model=LstmPredictResponse)
+async def predict_lstm(
+    body: LstmPredictRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Predict risk from a sequence of readings using LSTM temporal model."""
+    device_result = await db.exec(
+        select(Device).where(Device.id == body.device_id, Device.user_id == user.id)
+    )
+    if not device_result.first():
+        raise HTTPException(status_code=404, detail="Device not found")
+
+    if body.sequence:
+        sequence = body.sequence
+    else:
+        readings_result = await db.exec(
+            select(SensorReading)
+            .where(SensorReading.device_id == body.device_id)
+            .order_by(SensorReading.time.desc())
+            .limit(5)
+        )
+        readings = list(readings_result.all())[::-1]  # oldest → newest
+        sequence = [
+            {
+                "acetone_delta":     r.acetone_delta,
+                "quality_score":     r.quality_score,
+                "reliability_score": r.reliability_score,
+                "ketosis_index":     r.ketosis_index,
+                "metabolic_score":   r.metabolic_score,
+                "pressure_mean":     r.pressure_mean,
+                "temperature":       r.temp_c,
+                "humidity":          r.humidity_pct,
+            }
+            for r in readings
+        ]
+
+    result = ml_inference.predict_risk_lstm(sequence)
+    return LstmPredictResponse(
+        label=result.get("label"),
+        metabolic_risk_index=result.get("metabolic_risk_index"),
+        confidence_score=result.get("confidence_score", 0.0),
+        model_used=result.get("model_used", "unknown"),
+        recalibration_needed=result.get("recalibration_needed", False),
+        sequence_length=result.get("sequence_length", len(sequence)),
+        fallback_reason=result.get("reason"),
+    )
+
+
+# ─── GET /ai/drift ────────────────────────────────────────────────────────────
+
+@router.get("/drift", response_model=DriftResponse)
+async def check_drift(
+    device_id: UUID = Query(...),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Check sensor drift from calibration history."""
+    device_result = await db.exec(
+        select(Device).where(Device.id == device_id, Device.user_id == user.id)
+    )
+    if not device_result.first():
+        raise HTTPException(status_code=404, detail="Device not found")
+
+    cal_result = await db.exec(
+        select(DeviceCalibration)
+        .where(DeviceCalibration.device_id == device_id)
+        .order_by(DeviceCalibration.calibrated_at)
+    )
+    calibrations = list(cal_result.all())
+
+    history = [
+        {"ambient_voc": c.baseline_voc, "time": c.calibrated_at}
+        for c in calibrations
+    ]
+
+    result = ml_inference.check_drift(history)
+    return DriftResponse(
+        device_id=device_id,
+        drift_detected=result["drift_detected"],
+        severity=result["severity"],
+        confidence=result["confidence"],
+        recommendation=result["recommendation"],
+        drift_pct=result.get("drift_pct"),
+        baseline_voc=result.get("baseline_voc"),
+        latest_voc=result.get("latest_voc"),
+        n_calibrations_used=len(calibrations),
     )

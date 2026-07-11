@@ -376,7 +376,7 @@ export interface SensorReadingOut {
   environment_penalty: number | null;
   metabolic_risk_index: number | null;
   confidence_score: number | null;
-  label: string | null;           // clean|low|moderate|high|unreliable
+  label: string | null;           // Anderson 2015: basal|light_ketosis|nutritional_ketosis|deep_ketosis|dka_risk|unreliable
 }
 
 export interface DeviceOut {

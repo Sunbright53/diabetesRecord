@@ -2,7 +2,14 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 
-export type AcetoneLabel = "clean" | "low" | "moderate" | "high" | "unreliable";
+export type AcetoneLabel =
+  | "clean"
+  | "basal"
+  | "light_ketosis"
+  | "nutritional_ketosis"
+  | "deep_ketosis"
+  | "dka_risk"
+  | "unreliable";
 
 export interface LiveReading {
   device_id: string;

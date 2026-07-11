@@ -8,6 +8,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { AcetoneLabel, LiveReading } from "@/lib/useDeviceStream";
 import { api } from "@/lib/api";
 import { useUnits } from "@/lib/units";
+import { LABEL_STYLE, LABEL_TH } from "@/lib/riskLabel";
 
 const CALIBRATION_MS = 10_000;
 const RECORDING_MS   = 10_000;
@@ -51,21 +52,9 @@ function modeLabel(samples: LiveReading[]): AcetoneLabel | null {
   return (top?.[0] as AcetoneLabel) ?? null;
 }
 
-const LABEL_TH: Record<string, string> = {
-  clean: "อากาศสะอาด",
-  low: "ต่ำ",
-  moderate: "ปานกลาง",
-  high: "สูง",
-  unreliable: "ไม่แน่ใจ",
-};
-
-const LABEL_COLOR: Record<string, string> = {
-  clean: "text-sky-400",
-  low: "text-mint-500",
-  moderate: "text-amber-400",
-  high: "text-red-400",
-  unreliable: "text-text-muted",
-};
+const LABEL_COLOR: Record<string, string> = Object.fromEntries(
+  Object.entries(LABEL_STYLE).map(([k, v]) => [k, v.tailwind])
+);
 
 // ── Web Audio beeps ─────────────────────────────────────────────────────────
 // Single AudioContext, initialised on the START click (user gesture) so iOS

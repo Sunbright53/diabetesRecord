@@ -1,13 +1,13 @@
 {
   "rf": {
-    "f1_weighted_test": 1.0,
-    "f1_weighted_cv_mean": 0.9967,
-    "f1_weighted_cv_std": 0.0067
+    "f1_weighted_test": 0.9917,
+    "f1_weighted_cv_mean": 0.9907,
+    "f1_weighted_cv_std": 0.0063
   },
   "xgb": {
-    "f1_weighted_test": 1.0,
-    "f1_weighted_cv_mean": 0.9992,
-    "f1_weighted_cv_std": 0.0017
+    "f1_weighted_test": 0.9903,
+    "f1_weighted_cv_mean": 0.9926,
+    "f1_weighted_cv_std": 0.0061
   },
   "n_train": 959,
   "n_test": 240,
@@ -28,8 +28,11 @@
     "fat_burning_index"
   ],
   "labels": [
-    "low",
-    "moderate",
-    "high"
-  ]
+    "basal",
+    "light_ketosis",
+    "nutritional_ketosis",
+    "deep_ketosis",
+    "dka_risk"
+  ],
+  "label_system": "Anderson 2015 five-class"
 }

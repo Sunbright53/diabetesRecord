@@ -1,6 +1,14 @@
 """
-MetaBreath AI Model Training Script
+MetaBreath AI Model Training Script — Anderson 2015 Five-Class Edition
 Train Random Forest + XGBoost on the acetone delta demo dataset.
+
+Labels follow Anderson (2015) five-pattern breath acetone classification:
+  basal              0.5–2 ppm   standard diet
+  light_ketosis      2–4 ppm     mild caloric restriction
+  nutritional_ketosis 4–30 ppm   HFLC/keto diet, BOHB 0.5–3 mM
+  deep_ketosis       30–75 ppm   fasting / extended restriction
+  dka_risk           ≥ 75 ppm    diabetic ketoacidosis range
+Source: Anderson JC. Obesity (2015) 23:2327-2334. doi:10.1002/oby.21242
 
 Usage:
     python apps/api/notebooks/train_models.py
@@ -21,10 +29,7 @@ import joblib
 import numpy as np
 import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import (
-    classification_report,
-    f1_score,
-)
+from sklearn.metrics import classification_report, f1_score
 from sklearn.model_selection import StratifiedKFold, cross_val_score, train_test_split
 from sklearn.preprocessing import LabelEncoder
 from xgboost import XGBClassifier
@@ -41,7 +46,6 @@ DATASET = (
 MODEL_DIR = ROOT / "apps" / "api" / "models"
 MODEL_DIR.mkdir(exist_ok=True)
 
-# Features to use for training (must exist in CSV and be available at inference time)
 FEATURE_COLS = [
     "acetone_delta",
     "quality_score",
@@ -57,25 +61,36 @@ FEATURE_COLS = [
     "metabolic_score",
     "fat_burning_index",
 ]
-LABEL_COL = "label"
-# "unreliable" is handled by reliability_score gate at inference — not trained
-TRAIN_LABELS = ["low", "moderate", "high"]
-LABEL_ORDER = TRAIN_LABELS  # what the model outputs
+
+# Anderson 2015 five-class thresholds applied to acetone_delta (ppm)
+FIVE_CLASS_THRESHOLDS = [(2.0, "basal"), (4.0, "light_ketosis"),
+                          (30.0, "nutritional_ketosis"), (75.0, "deep_ketosis")]
+TRAIN_LABELS = ["basal", "light_ketosis", "nutritional_ketosis", "deep_ketosis", "dka_risk"]
+LABEL_ORDER = TRAIN_LABELS
+
+
+def anderson_label(ppm: float) -> str:
+    for thresh, lbl in FIVE_CLASS_THRESHOLDS:
+        if ppm < thresh:
+            return lbl
+    return "dka_risk"
 
 
 # ─── Load data ────────────────────────────────────────────────────────────────
 print(f"Loading dataset: {DATASET}")
 df = pd.read_csv(DATASET, encoding="utf-8-sig")
-print(f"  Rows total: {len(df)} | Labels: {df[LABEL_COL].value_counts().to_dict()}")
+print(f"  Rows total: {len(df)} | Original labels: {df['label'].value_counts().to_dict()}")
 
-# Drop "unreliable" rows (only 1 sample — handled by rule gate at inference)
-df = df[df[LABEL_COL].isin(TRAIN_LABELS)].copy()
-print(f"  Rows after dropping 'unreliable': {len(df)}")
+# Drop unreliable rows (handled by reliability gate at inference)
+df = df[df["label"] != "unreliable"].copy()
+
+# Re-label all rows using Anderson 2015 thresholds
+df["label"] = df["acetone_delta"].apply(anderson_label)
+print(f"  5-class label distribution:\n{df['label'].value_counts().to_dict()}")
 
 X = df[FEATURE_COLS].copy()
-y_raw = df[LABEL_COL].copy()
+y_raw = df["label"].copy()
 
-# Encode labels as integers: low=0, moderate=1, high=2
 le = LabelEncoder()
 le.fit(TRAIN_LABELS)
 y = le.transform(y_raw)
@@ -120,7 +135,7 @@ for feat, imp in feat_imp[:5]:
 
 # ─── XGBoost ──────────────────────────────────────────────────────────────────
 print("\n=== Training XGBoost ===")
-n_classes = len(LABEL_ORDER)
+n_classes = len(TRAIN_LABELS)
 
 xgb = XGBClassifier(
     n_estimators=300,
@@ -128,7 +143,6 @@ xgb = XGBClassifier(
     learning_rate=0.05,
     subsample=0.8,
     colsample_bytree=0.8,
-    use_label_encoder=False,
     eval_metric="mlogloss",
     num_class=n_classes,
     objective="multi:softprob",
@@ -157,11 +171,15 @@ print(f"Saved: {xgb_path}")
 # ─── Save metadata ────────────────────────────────────────────────────────────
 feature_meta = {
     "feature_columns": FEATURE_COLS,
-    "label_classes": LABEL_ORDER,
+    "label_classes": TRAIN_LABELS,
     "label_encoder_classes": le.classes_.tolist(),
+    "anderson_five_class_labels": TRAIN_LABELS,
+    "anderson_thresholds_ppm": [t for t, _ in FIVE_CLASS_THRESHOLDS],
+    "anderson_reference": "Anderson JC. Obesity (2015) 23:2327-2334. doi:10.1002/oby.21242",
 }
 with open(MODEL_DIR / "feature_columns.json", "w") as f:
     json.dump(feature_meta, f, indent=2)
+print(f"Saved: {MODEL_DIR / 'feature_columns.json'}")
 
 metrics = {
     "rf": {
@@ -178,7 +196,8 @@ metrics = {
     "n_test": int(len(X_test)),
     "dataset_rows": int(len(df)),
     "feature_columns": FEATURE_COLS,
-    "labels": LABEL_ORDER,
+    "labels": TRAIN_LABELS,
+    "label_system": "Anderson 2015 five-class",
 }
 with open(MODEL_DIR / "training_metrics.json", "w") as f:
     json.dump(metrics, f, indent=2, ensure_ascii=False)
