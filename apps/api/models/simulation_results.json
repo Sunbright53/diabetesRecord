@@ -1,0 +1,129 @@
+{
+  "min_sequence": 7,
+  "trend_labels": [
+    "stable",
+    "increasing",
+    "decreasing",
+    "abnormal"
+  ],
+  "scenarios": [
+    {
+      "id": "S1",
+      "name": "Stable healthy (14 sessions @ ~1.5 ppm)",
+      "expected": "stable",
+      "note": null,
+      "got": "stable",
+      "confidence": 0.9482,
+      "probabilities": {
+        "stable": 0.9482,
+        "increasing": 0.0008,
+        "decreasing": 0.0003,
+        "abnormal": 0.0508
+      },
+      "sequence_length": 14,
+      "model_used": "lstm_trend",
+      "fallback_reason": null,
+      "result": "PASS",
+      "passed": true
+    },
+    {
+      "id": "S2",
+      "name": "Ramping into ketosis (2 → 41 ppm over 14 sessions)",
+      "expected": "increasing",
+      "note": "Report §4.2 FAIL case — legacy LSTM predicted 'low'.",
+      "got": "increasing",
+      "confidence": 0.9506,
+      "probabilities": {
+        "stable": 0.0016,
+        "increasing": 0.9506,
+        "decreasing": 0.0027,
+        "abnormal": 0.0451
+      },
+      "sequence_length": 14,
+      "model_used": "lstm_trend",
+      "fallback_reason": null,
+      "result": "PASS",
+      "passed": true
+    },
+    {
+      "id": "S3",
+      "name": "Decreasing (28 → 2 ppm over 14 sessions)",
+      "expected": "decreasing",
+      "note": null,
+      "got": "decreasing",
+      "confidence": 0.8324,
+      "probabilities": {
+        "stable": 0.1291,
+        "increasing": 0.0087,
+        "decreasing": 0.8324,
+        "abnormal": 0.0298
+      },
+      "sequence_length": 14,
+      "model_used": "lstm_trend",
+      "fallback_reason": null,
+      "result": "PASS",
+      "passed": true
+    },
+    {
+      "id": "S4",
+      "name": "Stable + spike at day 7 (+15 ppm)",
+      "expected": "abnormal",
+      "note": null,
+      "got": "abnormal",
+      "confidence": 0.9167,
+      "probabilities": {
+        "stable": 0.0215,
+        "increasing": 0.0612,
+        "decreasing": 0.0006,
+        "abnormal": 0.9167
+      },
+      "sequence_length": 14,
+      "model_used": "lstm_trend",
+      "fallback_reason": null,
+      "result": "PASS",
+      "passed": true
+    },
+    {
+      "id": "S5",
+      "name": "Short sequence — only 5 sessions",
+      "expected": "insufficient_data (min 7)",
+      "note": null,
+      "got": "insufficient_data",
+      "confidence": 0.0,
+      "probabilities": {
+        "stable": 0.0,
+        "increasing": 0.0,
+        "decreasing": 0.0,
+        "abnormal": 0.0
+      },
+      "sequence_length": 5,
+      "model_used": "insufficient_data",
+      "fallback_reason": "sequence has 5 sessions; need ≥7",
+      "result": "PASS",
+      "passed": true
+    },
+    {
+      "id": "S6",
+      "name": "Missing optional fields (breath_duration + humidity = None)",
+      "expected": "stable (resilient to missing covariates)",
+      "note": "Simulates a firmware version that stops reporting two fields; the acetone_delta sequence itself is stable so the answer should stay stable.",
+      "got": "stable",
+      "confidence": 0.9504,
+      "probabilities": {
+        "stable": 0.9504,
+        "increasing": 0.0007,
+        "decreasing": 0.0003,
+        "abnormal": 0.0486
+      },
+      "sequence_length": 14,
+      "model_used": "lstm_trend",
+      "fallback_reason": null,
+      "result": "PASS",
+      "passed": true
+    }
+  ],
+  "summary": {
+    "passed": 6,
+    "total": 6
+  }
+}
