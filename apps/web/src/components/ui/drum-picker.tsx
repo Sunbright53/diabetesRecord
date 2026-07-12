@@ -1,9 +1,9 @@
 "use client";
 
-import { useRef, useState, useEffect, useCallback } from "react";
+import { useRef, useState, useCallback } from "react";
 
-const ITEM_H = 42;    // px per item
-const PADDING = 1;    // items above/below center (3 visible total: 1 + center + 1)
+// Height of each item row in px — also the drag distance per value step
+const ITEM_H = 44;
 
 interface DrumPickerProps {
   values: number[];
@@ -17,113 +17,113 @@ interface DrumPickerProps {
 }
 
 export function DrumPicker({ values, value, onChange, label, unit, bgImage, format, className }: DrumPickerProps) {
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const snapTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const [centerIdx, setCenterIdx] = useState(Math.max(0, values.indexOf(value)));
+  const [idx, setIdx] = useState(() => {
+    const i = values.indexOf(value);
+    return i >= 0 ? i : 0;
+  });
 
-  useEffect(() => {
-    const idx = Math.max(0, values.indexOf(value));
-    if (scrollRef.current) scrollRef.current.scrollTop = idx * ITEM_H;
-    setCenterIdx(idx);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // Drag state stored in ref to avoid re-renders during move
+  const drag = useRef<{ startY: number; startIdx: number } | null>(null);
 
-  const handleScroll = useCallback(() => {
-    if (!scrollRef.current) return;
-    const idx = Math.round(scrollRef.current.scrollTop / ITEM_H);
-    const clamped = Math.max(0, Math.min(values.length - 1, idx));
-    setCenterIdx(clamped);
-    onChange(values[clamped]);
-    clearTimeout(snapTimer.current);
-    snapTimer.current = setTimeout(() => {
-      scrollRef.current?.scrollTo({ top: clamped * ITEM_H, behavior: "smooth" });
-    }, 120);
-  }, [values, onChange]);
+  const handlePointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    // Capture so move events fire even if pointer leaves element
+    e.currentTarget.setPointerCapture(e.pointerId);
+    drag.current = { startY: e.clientY, startIdx: idx };
+  }, [idx]);
 
-  const containerH = ITEM_H * (PADDING * 2 + 1); // = 42 * 3 = 126px
+  const handlePointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (!drag.current) return;
+    // Drag UP → higher index (higher value); drag DOWN → lower index
+    const delta = Math.round((drag.current.startY - e.clientY) / ITEM_H);
+    const newIdx = Math.max(0, Math.min(values.length - 1, drag.current.startIdx + delta));
+    if (newIdx !== idx) {
+      setIdx(newIdx);
+      onChange(values[newIdx]);
+    }
+  }, [idx, values, onChange]);
+
+  const handlePointerUp = useCallback(() => { drag.current = null; }, []);
+
+  // Container shows 3 rows: above-center, center, below-center
+  const containerH = ITEM_H * 3;
 
   return (
-    <div
-      className={`relative overflow-hidden rounded-xl ${className ?? ""}`}
-      style={{ height: containerH }}
-    >
-      {/* Background photo */}
-      <div
-        className="absolute inset-0 bg-cover bg-center"
-        style={{ backgroundImage: `url('${bgImage}')` }}
-      />
-      {/* Dark scrim */}
-      <div className="absolute inset-0 bg-black/75" />
+    // Labels sit OUTSIDE the drum container → zero overlap with adjacent items
+    <div className={`flex flex-col items-center gap-1 ${className ?? ""}`}>
+      <span className="text-white/65 text-[11px] font-semibold tracking-wider uppercase select-none">
+        {label}
+      </span>
 
-      {/* Top/bottom gradient fade */}
       <div
-        className="absolute inset-0 pointer-events-none z-10"
+        className="relative overflow-hidden rounded-xl w-full"
         style={{
-          background:
-            "linear-gradient(to bottom, rgba(0,0,0,0.7) 0%, transparent 32%, transparent 68%, rgba(0,0,0,0.7) 100%)",
-        }}
-      />
-
-      {/* Center selection band */}
-      <div
-        className="absolute inset-x-8 z-20 pointer-events-none"
-        style={{
-          top: ITEM_H * PADDING,
-          height: ITEM_H,
-          borderTop: "1px solid rgba(255,255,255,0.35)",
-          borderBottom: "1px solid rgba(255,255,255,0.35)",
-        }}
-      />
-
-      {/* Label top */}
-      <div className="absolute top-0 inset-x-0 pt-1.5 text-center z-20 pointer-events-none">
-        <span className="text-white/80 text-[11px] font-semibold tracking-wide">{label}</span>
-      </div>
-
-      {/* Unit bottom */}
-      <div className="absolute bottom-0 inset-x-0 pb-1.5 text-center z-20 pointer-events-none">
-        <span className="text-white/40 text-[10px] tracking-[0.15em] uppercase">{unit}</span>
-      </div>
-
-      {/* Scrollable drum — constrained touch-action prevents stealing page scroll */}
-      <div
-        ref={scrollRef}
-        onScroll={handleScroll}
-        className="absolute inset-0 overflow-y-scroll z-30"
-        style={{
-          scrollSnapType: "y mandatory",
-          scrollbarWidth: "none",
-          WebkitOverflowScrolling: "touch",
-          overscrollBehavior: "contain",
-          touchAction: "pan-y",
+          height: containerH,
+          // touchAction:none → this div does NOT capture page scroll gestures
+          touchAction: "none",
+          cursor: "ns-resize",
         } as React.CSSProperties}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
       >
-        <div style={{ height: ITEM_H * PADDING }} aria-hidden="true" />
-        {values.map((v, i) => {
-          const dist = Math.abs(i - centerIdx);
+        {/* Background photo */}
+        <div
+          className="absolute inset-0 bg-cover bg-center"
+          style={{ backgroundImage: `url('${bgImage}')` }}
+        />
+        {/* Dark scrim — lighter so photo is visible */}
+        <div className="absolute inset-0 bg-black/38" />
+        {/* Edge fade */}
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            background:
+              "linear-gradient(to bottom, rgba(0,0,0,0.5) 0%, transparent 30%, transparent 70%, rgba(0,0,0,0.5) 100%)",
+          }}
+        />
+        {/* Center selection band */}
+        <div
+          className="absolute inset-x-8 pointer-events-none"
+          style={{
+            top: ITEM_H,
+            height: ITEM_H,
+            borderTop: "1px solid rgba(255,255,255,0.4)",
+            borderBottom: "1px solid rgba(255,255,255,0.4)",
+          }}
+        />
+
+        {/* Only render 3 items around center — absolutely positioned, no scroll div */}
+        {([-1, 0, 1] as const).map((offset) => {
+          const i = idx + offset;
+          if (i < 0 || i >= values.length) return null;
+          const isCenter = offset === 0;
           return (
             <div
-              key={v}
-              style={{ height: ITEM_H, scrollSnapAlign: "center", scrollSnapStop: "always" }}
-              className="flex items-center justify-center"
+              key={i}
+              className="absolute inset-x-0 flex items-center justify-center pointer-events-none"
+              style={{ top: (offset + 1) * ITEM_H, height: ITEM_H }}
             >
               <span
                 style={{
                   color: "white",
-                  fontSize: dist === 0 ? "1.8rem" : "1.05rem",
-                  fontWeight: dist === 0 ? 700 : 400,
-                  opacity: dist === 0 ? 1 : 0.35,
+                  fontSize: isCenter ? "1.75rem" : "1.0rem",
+                  fontWeight: isCenter ? 700 : 400,
+                  opacity: isCenter ? 1 : 0.38,
                   lineHeight: 1,
-                  transition: "font-size 0.08s ease, opacity 0.08s ease",
                   userSelect: "none",
                 }}
               >
-                {format ? format(v) : v}
+                {format ? format(values[i]) : values[i]}
               </span>
             </div>
           );
         })}
-        <div style={{ height: ITEM_H * PADDING }} aria-hidden="true" />
       </div>
+
+      <span className="text-white/40 text-[10px] tracking-[0.15em] uppercase select-none">
+        {unit}
+      </span>
     </div>
   );
 }
