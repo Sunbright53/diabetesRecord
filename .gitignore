@@ -63,3 +63,4 @@ Thumbs.db
 apps/api/models/rf_model.joblib
 apps/api/models/xgb_model.joblib
 apps/api/tests/AI_TEST_REPORT.pdf
+apps/api/tests/SMARTBREATH_TEST_REPORT.pdf

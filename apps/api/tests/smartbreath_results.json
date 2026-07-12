@@ -1,0 +1,183 @@
+{
+  "dataset": "Ziyatdinov 2015 SmartBreath reference",
+  "scale_map": "vol% * 30.0 = ppm equivalent",
+  "min_sequence": 7,
+  "trend_labels": [
+    "stable",
+    "increasing",
+    "decreasing",
+    "abnormal"
+  ],
+  "scenarios": [
+    {
+      "id": "SB1",
+      "name": "Air baseline stable (14x ace_conc=0)",
+      "expected": "stable",
+      "ppms": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "got": "stable",
+      "confidence": 0.9543,
+      "probabilities": {
+        "stable": 0.9543,
+        "increasing": 0.0007,
+        "decreasing": 0.0003,
+        "abnormal": 0.0447
+      },
+      "sequence_length": 14,
+      "model_used": "lstm_trend",
+      "fallback_reason": null,
+      "note": "Uses only air samples from SmartBreath. Tests LSTM behaviour on a flat real-sensor baseline.",
+      "verdict": "PASS"
+    },
+    {
+      "id": "SB2",
+      "name": "Real ramp: 0 -> 0.1 -> 0.3 -> 1.0 vol% (14 sess)",
+      "expected": "increasing",
+      "ppms": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        3.0,
+        3.0,
+        3.0,
+        3.0,
+        9.0,
+        9.0,
+        9.0,
+        30.0,
+        30.0,
+        30.0
+      ],
+      "got": "increasing",
+      "confidence": 0.9654,
+      "probabilities": {
+        "stable": 0.0008,
+        "increasing": 0.9654,
+        "decreasing": 0.0013,
+        "abnormal": 0.0325
+      },
+      "sequence_length": 14,
+      "model_used": "lstm_trend",
+      "fallback_reason": null,
+      "note": "Real SmartBreath acetone concentration ladder, scaled x30 -> {0, 3, 9, 30} ppm.",
+      "verdict": "PASS"
+    },
+    {
+      "id": "SB3",
+      "name": "Reverse ramp: 1.0 -> 0.3 -> 0.1 -> 0 vol%",
+      "expected": "decreasing",
+      "ppms": [
+        30.0,
+        30.0,
+        30.0,
+        9.0,
+        9.0,
+        9.0,
+        3.0,
+        3.0,
+        3.0,
+        3.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "got": "decreasing",
+      "confidence": 0.9901,
+      "probabilities": {
+        "stable": 0.0084,
+        "increasing": 0.0004,
+        "decreasing": 0.9901,
+        "abnormal": 0.0011
+      },
+      "sequence_length": 14,
+      "model_used": "lstm_trend",
+      "fallback_reason": null,
+      "note": "Reverse of SB2 to test symmetric direction detection.",
+      "verdict": "PASS"
+    },
+    {
+      "id": "SB4",
+      "name": "Air baseline + single ace-1.0 spike at t=7",
+      "expected": "abnormal",
+      "ppms": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        30.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "got": "abnormal",
+      "confidence": 0.9556,
+      "probabilities": {
+        "stable": 0.0288,
+        "increasing": 0.0152,
+        "decreasing": 0.0004,
+        "abnormal": 0.9556
+      },
+      "sequence_length": 14,
+      "model_used": "lstm_trend",
+      "fallback_reason": null,
+      "note": "Real SmartBreath 1.0 vol% acetone (30 ppm eq.) inserted into 14 air samples.",
+      "verdict": "PASS"
+    },
+    {
+      "id": "SB5",
+      "name": "Natural order (batch=day-1-morning, 14 first samples)",
+      "expected": "informational",
+      "ppms": [
+        0.0,
+        0.0,
+        0.0,
+        9.0,
+        9.0,
+        0.0,
+        30.0,
+        3.0,
+        3.0,
+        9.0,
+        0.0,
+        0.0,
+        3.0,
+        0.0
+      ],
+      "got": "stable",
+      "confidence": 0.6658,
+      "probabilities": {
+        "stable": 0.6658,
+        "increasing": 0.0708,
+        "decreasing": 0.039,
+        "abnormal": 0.2243
+      },
+      "sequence_length": 14,
+      "model_used": "lstm_trend",
+      "fallback_reason": null,
+      "note": "Whatever the experimenter ran that morning, in original order. No expected label -- report the LSTM's judgement as-is.",
+      "verdict": "info"
+    }
+  ]
+}
