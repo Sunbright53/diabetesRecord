@@ -13,6 +13,7 @@ import { FlexibilityBar } from "@/components/FlexibilityBar";
 import { LABEL_TH, backendLabelToZone } from "@/lib/riskLabel";
 import { TodayMetricCard } from "@/components/cards/TodayMetricCard";
 import { CategoryCard } from "@/components/cards/CategoryCard";
+import { TrendClassCard } from "@/components/cards/TrendClassCard";
 import Link from "next/link";
 import { Flame, ChevronRight, Check } from "lucide-react";
 
@@ -109,6 +110,9 @@ export default function HomePage() {
           </span>
         </div>
       </div>
+
+      {/* Long-term trend classifier (Phase 3 LSTM) */}
+      {deviceId && <TrendClassCard deviceId={deviceId} sessions={14} />}
 
       {/* Streak + Quests */}
       <div className="bg-bg-elevated rounded-2xl p-4 flex items-center gap-3">

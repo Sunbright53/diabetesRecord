@@ -1,38 +1,81 @@
 {
-  "rf": {
-    "f1_weighted_test": 0.9917,
-    "f1_weighted_cv_mean": 0.9907,
-    "f1_weighted_cv_std": 0.0063
+  "dataset": {
+    "source_file": "metabreath_acetone_delta_demo_dataset.csv",
+    "dataset_rows": 1199,
+    "n_train": 959,
+    "n_test": 240,
+    "label_system": "Anderson 2015 five-class",
+    "labels": [
+      "basal",
+      "light_ketosis",
+      "nutritional_ketosis",
+      "deep_ketosis",
+      "dka_risk"
+    ]
   },
-  "xgb": {
-    "f1_weighted_test": 0.9903,
-    "f1_weighted_cv_mean": 0.9926,
-    "f1_weighted_cv_std": 0.0061
-  },
-  "n_train": 959,
-  "n_test": 240,
-  "dataset_rows": 1199,
-  "feature_columns": [
+  "chance_level_accuracy_stratified": 0.3783,
+  "leaky_features_removed_in_predictive": [
     "acetone_delta",
-    "quality_score",
-    "reliability_score",
-    "ambient_voc",
-    "pressure_mean",
-    "pressure_std",
-    "breath_duration",
-    "temperature",
-    "humidity",
-    "environment_penalty",
+    "fat_burning_index",
     "ketosis_index",
-    "metabolic_score",
-    "fat_burning_index"
+    "metabolic_score"
   ],
-  "labels": [
-    "basal",
-    "light_ketosis",
-    "nutritional_ketosis",
-    "deep_ketosis",
-    "dka_risk"
-  ],
-  "label_system": "Anderson 2015 five-class"
+  "verification": {
+    "note": "13 features including acetone_delta and derived indices. Anderson labels are a deterministic function of acetone_delta, so the classifier reproduces the labelling rule. Reported metrics measure pipeline rule-consistency under noise, NOT independent predictive validity. See report Section 4 Interpretation Note and Section 7.1 L9.",
+    "feature_columns": [
+      "acetone_delta",
+      "quality_score",
+      "reliability_score",
+      "ambient_voc",
+      "pressure_mean",
+      "pressure_std",
+      "breath_duration",
+      "temperature",
+      "humidity",
+      "environment_penalty",
+      "ketosis_index",
+      "metabolic_score",
+      "fat_burning_index"
+    ],
+    "n_features": 13,
+    "rf": {
+      "test_accuracy": 0.9917,
+      "f1_weighted_test": 0.9917,
+      "f1_weighted_cv_mean": 0.9907,
+      "f1_weighted_cv_std": 0.0063
+    },
+    "xgb": {
+      "test_accuracy": 0.9917,
+      "f1_weighted_test": 0.9903,
+      "f1_weighted_cv_mean": 0.9926,
+      "f1_weighted_cv_std": 0.0061
+    }
+  },
+  "predictive": {
+    "note": "9 engineering features only (acetone_delta, ketosis_index, metabolic_score, fat_burning_index removed). No feature in this set is a function of the label, so accuracy above chance would indicate genuine predictive signal in the sensor/environment features. Expected to be at or near chance for the synthetic demo dataset; kept as an honest baseline until pilot BOHB labels are collected.",
+    "feature_columns": [
+      "quality_score",
+      "reliability_score",
+      "ambient_voc",
+      "pressure_mean",
+      "pressure_std",
+      "breath_duration",
+      "temperature",
+      "humidity",
+      "environment_penalty"
+    ],
+    "n_features": 9,
+    "rf": {
+      "test_accuracy": 0.3958,
+      "f1_weighted_test": 0.3969,
+      "f1_weighted_cv_mean": 0.3725,
+      "f1_weighted_cv_std": 0.0456
+    },
+    "xgb": {
+      "test_accuracy": 0.4333,
+      "f1_weighted_test": 0.3737,
+      "f1_weighted_cv_mean": 0.3848,
+      "f1_weighted_cv_std": 0.0043
+    }
+  }
 }

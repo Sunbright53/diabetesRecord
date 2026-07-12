@@ -470,6 +470,24 @@ export interface ChatResponse {
   disclaimer_appended: boolean;
 }
 
+export type TrendClass = "stable" | "increasing" | "decreasing" | "abnormal";
+
+export interface TrendClassifyResponse {
+  device_id: string;
+  trend: TrendClass | null;
+  confidence: number;
+  probabilities: Record<TrendClass, number>;
+  sequence_length: number;
+  min_required: number;
+  model_used:
+    | "lstm_trend"
+    | "trend_rule_fallback"
+    | "insufficient_data"
+    | "error"
+    | string;
+  fallback_reason: string | null;
+}
+
 export type ContextTag = "fasting" | "post_meal" | "post_exercise" | "evening";
 
 export interface FlexibilityBreakdown {
@@ -695,6 +713,11 @@ export const api = {
   ai: {
     getTrend: (deviceId: string, days = 7) =>
       request<TrendResponse>(`/ai/trend?device_id=${deviceId}&days=${days}`),
+    classifyTrend: (deviceId: string, sessions = 14) =>
+      request<TrendClassifyResponse>("/ai/predict/trend", {
+        method: "POST",
+        body: JSON.stringify({ device_id: deviceId, sessions }),
+      }),
     chat: (message: string, deviceId?: string) =>
       request<ChatResponse>("/ai/chat", {
         method: "POST",

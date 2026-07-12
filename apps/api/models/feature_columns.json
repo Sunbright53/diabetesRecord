@@ -14,6 +14,38 @@
     "metabolic_score",
     "fat_burning_index"
   ],
+  "verification_features": [
+    "acetone_delta",
+    "quality_score",
+    "reliability_score",
+    "ambient_voc",
+    "pressure_mean",
+    "pressure_std",
+    "breath_duration",
+    "temperature",
+    "humidity",
+    "environment_penalty",
+    "ketosis_index",
+    "metabolic_score",
+    "fat_burning_index"
+  ],
+  "predictive_features": [
+    "quality_score",
+    "reliability_score",
+    "ambient_voc",
+    "pressure_mean",
+    "pressure_std",
+    "breath_duration",
+    "temperature",
+    "humidity",
+    "environment_penalty"
+  ],
+  "leaky_features": [
+    "acetone_delta",
+    "fat_burning_index",
+    "ketosis_index",
+    "metabolic_score"
+  ],
   "label_classes": [
     "basal",
     "light_ketosis",

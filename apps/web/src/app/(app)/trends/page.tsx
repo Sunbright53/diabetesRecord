@@ -22,6 +22,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Wind } from "lucide-react";
 import { EmptyChartIllustration } from "@/components/brand/empty-chart";
+import { TrendClassCard } from "@/components/cards/TrendClassCard";
 import { twMerge } from "tailwind-merge";
 
 function EmptyChart({ label }: { label: string }) {
@@ -176,6 +177,9 @@ export default function TrendsPage() {
           ))}
         </div>
       </div>
+
+      {/* Long-term trend classifier (Phase 3 LSTM Trend) */}
+      {effectiveDevice && <TrendClassCard deviceId={effectiveDevice} sessions={14} />}
 
       {/* Ketone chart */}
       <Card>

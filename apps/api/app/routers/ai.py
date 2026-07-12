@@ -63,6 +63,25 @@ class LstmPredictResponse(BaseModel):
     fallback_reason: Optional[str] = None
 
 
+class TrendClassifyRequest(BaseModel):
+    device_id: UUID
+    # Optional: caller can supply the session sequence explicitly
+    # (else last-N session-level readings are built from DB)
+    sequence: Optional[List[dict]] = None
+    sessions: int = 14   # how many recent sessions to consider
+
+
+class TrendClassifyResponse(BaseModel):
+    device_id: UUID
+    trend: Optional[str]
+    confidence: float
+    probabilities: dict
+    sequence_length: int
+    min_required: int
+    model_used: str
+    fallback_reason: Optional[str] = None
+
+
 class DriftResponse(BaseModel):
     device_id: UUID
     drift_detected: bool
@@ -294,6 +313,68 @@ async def predict_lstm(
         recalibration_needed=result.get("recalibration_needed", False),
         sequence_length=result.get("sequence_length", len(sequence)),
         fallback_reason=result.get("reason"),
+    )
+
+
+# ─── POST /ai/predict/trend (Phase 3 — LSTM Trend Classifier) ────────────────
+
+@router.post("/predict/trend", response_model=TrendClassifyResponse)
+async def predict_trend_classification(
+    body: TrendClassifyRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Classify the direction of the user's ΔVOC trend over recent sessions.
+
+    Runs in PARALLEL to /ai/predict (per-reading classification) — the two
+    endpoints answer different questions:
+      - /ai/predict           : "What Anderson class is this single reading?"
+      - /ai/predict/trend     : "How is the user's baseline changing over time?"
+    Output labels: stable | increasing | decreasing | abnormal | None
+    """
+    device_result = await db.exec(
+        select(Device).where(Device.id == body.device_id, Device.user_id == user.id)
+    )
+    if not device_result.first():
+        raise HTTPException(status_code=404, detail="Device not found")
+
+    if body.sequence:
+        sequence = body.sequence
+    else:
+        # Pull the most recent readings; downstream service handles the sequence
+        # length gate (min 7). We over-fetch a little in case some rows have
+        # missing acetone_delta and get filtered by the caller.
+        readings_result = await db.exec(
+            select(SensorReading)
+            .where(SensorReading.device_id == body.device_id)
+            .order_by(SensorReading.time.desc())
+            .limit(max(body.sessions, ml_inference.TREND_MIN_SEQUENCE_LENGTH))
+        )
+        readings = list(readings_result.all())[::-1]  # oldest → newest
+        sequence = [
+            {
+                "acetone_delta":     r.acetone_delta,
+                "pressure_mean":     r.pressure_mean,
+                "pressure_std":      r.pressure_std,
+                "breath_duration":   r.breath_duration,
+                "temperature":       r.temp_c,
+                "humidity":          r.humidity_pct,
+                "quality_score":     r.quality_score,
+                "reliability_score": r.reliability_score,
+            }
+            for r in readings
+        ]
+
+    result = ml_inference.classify_trend(sequence)
+    return TrendClassifyResponse(
+        device_id=body.device_id,
+        trend=result.get("trend"),
+        confidence=result.get("confidence", 0.0),
+        probabilities=result.get("probabilities", {}),
+        sequence_length=result.get("sequence_length", len(sequence)),
+        min_required=result.get("min_required", ml_inference.TREND_MIN_SEQUENCE_LENGTH),
+        model_used=result.get("model_used", "unknown"),
+        fallback_reason=result.get("fallback_reason"),
     )
 
 
