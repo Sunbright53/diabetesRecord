@@ -5,7 +5,7 @@
 //   - WiFiManager by tzapu (>= 2.0.17)
 //   - PubSubClient by Nick O'Leary
 //   - ArduinoJson by Benoit Blanchon
-// (Wire, WiFi, Preferences มากับ ESP32 core อยู่แล้ว)
+// (Wire, WiFi, WiFiMulti, Preferences มากับ ESP32 core อยู่แล้ว)
 //
 // ── Device ID = MAC address ของตัวเอง (ไม่ต้องตั้งค่าใดๆ) ──
 //   MQTT topic: metabreath/<MAC_NO_COLONS>/reading
@@ -14,7 +14,9 @@
 // ── วิธี user ตั้งค่า WiFi (ครั้งแรก หรือเปลี่ยน WiFi) ──
 //   1. เสียบไฟ → รอ MetaBreath-Setup-XXXX ปรากฏใน WiFi list
 //   2. เชื่อม MetaBreath-Setup-XXXX → เปิด 192.168.4.1
-//   3. เลือก WiFi บ้าน → กรอกรหัส → Save → เสร็จ
+//   3. เลือก WiFi หลัก (slot 1) จาก scan list → กรอกรหัส
+//   4. (ไม่บังคับ) กรอก WiFi สำรอง slot 2/3 → Save
+//   บู๊ตครั้งต่อไปจะต่อ WiFi ที่แรงที่สุดใน 3 slot อัตโนมัติ
 //
 // ── รีเซ็ต WiFi จากระยะไกล (ผ่านเว็บแอป) ──
 //   Subscribe: metabreath/<MAC>/command
@@ -22,6 +24,7 @@
 // =====================================================
 #include <Wire.h>
 #include <WiFi.h>
+#include <WiFiMulti.h>
 #include <WiFiManager.h>
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
@@ -52,7 +55,7 @@
 // =====================================================
 // TGS1820 CONFIG
 // =====================================================
-const int TGS_SAMPLE_COUNT = 50;   // 100→50 for faster loop (~250ms savings)
+const int TGS_SAMPLE_COUNT = 50;
 const int BASELINE_SECONDS = 10;
 float tgsBaselineVoltage   = 0.0;
 
@@ -73,14 +76,22 @@ int readingNumber = 1;
 // NETWORK GLOBALS
 // =====================================================
 WiFiClient   wifiClient;
+WiFiMulti    wifiMulti;
 PubSubClient mqttClient(wifiClient);
 Preferences  prefs;
 
 char mqttTopic[128];
 char mqttCommandTopic[128];
 char mqttClientId[64];
-char deviceId[20] = "";   // MAC address ไม่มี colon เช่น 88F155302810
-char lastCmdId[40] = "";  // idempotency: กัน replay command เดิมซ้ำ
+char deviceId[20] = "";
+char lastCmdId[40] = "";
+
+// WiFi slots 2 & 3 (slot 1 managed by WiFiManager's own NVS)
+char slot2ssid[33] = "";
+char slot2pass[65] = "";
+char slot3ssid[33] = "";
+char slot3pass[65] = "";
+bool wifiMultiReady = false;
 
 bool mqttEnabled = false;
 
@@ -97,6 +108,8 @@ void handleMqttMessage(char* topic, byte* payload, unsigned int len);
 void handleResetWifi();
 void connectMQTT();
 void ensureNetwork();
+void loadExtraWifiSlots();
+void setupWifiMulti();
 
 // =====================================================
 // SETUP
@@ -129,9 +142,7 @@ void setup() {
   prefs.end();
 
   // --------------------------------------------------
-  // Device ID = MAC address (ไม่ต้องตั้งค่า ได้จากฮาร์ดแวร์เลย)
-  // getEfuseMac() อ่าน MAC จาก eFuse โดยตรง ไม่ต้องรอ WiFi init
-  // bytes เก็บแบบ little-endian: bit[7:0] = mac[0] (byte แรกของ MAC)
+  // Device ID = MAC address
   // --------------------------------------------------
   {
     uint64_t chipid = ESP.getEfuseMac();
@@ -147,6 +158,11 @@ void setup() {
   Serial.println(deviceId);
 
   // --------------------------------------------------
+  // Load extra WiFi slots from Preferences
+  // --------------------------------------------------
+  loadExtraWifiSlots();
+
+  // --------------------------------------------------
   // Calibrate TGS1820
   // --------------------------------------------------
   Serial.println("Calibrating TGS1820 baseline...");
@@ -156,12 +172,57 @@ void setup() {
   Serial.println(" V");
 
   // --------------------------------------------------
-  // WiFiManager — portal แสดงแค่ WiFi เท่านั้น
-  // ไม่มีช่อง UUID — user ไม่ต้องรู้จัก UUID
+  // WiFiManager — portal พร้อม slot 2/3 สำรอง
   // --------------------------------------------------
   WiFiManager wm;
   wm.setConnectTimeout(30);
   wm.setConfigPortalTimeout(300);
+
+  // Custom parameters: slot 2
+  WiFiManagerParameter sep1(
+    "<hr style='margin:20px 0'>"
+    "<p style='color:#0891b2;font-weight:bold;margin-bottom:4px'>WiFi สำรอง (ไม่บังคับ)</p>"
+    "<p style='color:#64748b;font-size:0.85em;margin-top:0'>กรอก SSID + รหัสผ่านของ WiFi ตัวสำรอง<br>"
+    "ESP32 จะต่ออัตโนมัติกับตัวที่ available</p>"
+  );
+  WiFiManagerParameter param_ssid2("ssid2", "WiFi ช่อง 2 (SSID)", slot2ssid, 32);
+  WiFiManagerParameter param_pass2("pass2", "รหัสผ่าน WiFi 2", slot2pass, 64, "type='password'");
+  WiFiManagerParameter sep2("<div style='margin:12px 0'></div>");
+  WiFiManagerParameter param_ssid3("ssid3", "WiFi ช่อง 3 (SSID)", slot3ssid, 32);
+  WiFiManagerParameter param_pass3("pass3", "รหัสผ่าน WiFi 3", slot3pass, 64, "type='password'");
+
+  wm.addParameter(&sep1);
+  wm.addParameter(&param_ssid2);
+  wm.addParameter(&param_pass2);
+  wm.addParameter(&sep2);
+  wm.addParameter(&param_ssid3);
+  wm.addParameter(&param_pass3);
+
+  // Save extra slots whenever portal form is submitted
+  wm.setSaveParamsCallback([&]() {
+    const char* s2 = param_ssid2.getValue();
+    const char* p2 = param_pass2.getValue();
+    const char* s3 = param_ssid3.getValue();
+    const char* p3 = param_pass3.getValue();
+
+    strncpy(slot2ssid, s2, sizeof(slot2ssid) - 1);
+    // Keep existing password if field left blank
+    if (strlen(p2) > 0) strncpy(slot2pass, p2, sizeof(slot2pass) - 1);
+    strncpy(slot3ssid, s3, sizeof(slot3ssid) - 1);
+    if (strlen(p3) > 0) strncpy(slot3pass, p3, sizeof(slot3pass) - 1);
+
+    prefs.begin("wifiSlots", false);
+    prefs.putString("ssid2", slot2ssid);
+    prefs.putString("pass2", slot2pass);
+    prefs.putString("ssid3", slot3ssid);
+    prefs.putString("pass3", slot3pass);
+    prefs.end();
+
+    Serial.println("[WiFi] Extra slots saved to Preferences");
+    Serial.printf("[WiFi]   slot2=%s  slot3=%s\n",
+      strlen(slot2ssid) > 0 ? slot2ssid : "(empty)",
+      strlen(slot3ssid) > 0 ? slot3ssid : "(empty)");
+  });
 
   String apName = "MetaBreath-Setup-" + String(deviceId).substring(8);
 
@@ -179,7 +240,7 @@ void setup() {
   );
   wm.setCustomMenuHTML(
     "<p style='color:#64748b;font-size:1em;margin-bottom:20px;text-align:center'>"
-      "เลือก WiFi ที่บ้าน<br>แล้วกรอกรหัสผ่าน"
+      "เลือก WiFi หลัก (ช่อง 1)<br>แล้วกรอกรหัสผ่าน"
     "</p>"
   );
 
@@ -200,7 +261,12 @@ void setup() {
   ledOn();
 
   // --------------------------------------------------
-  // MQTT — ใช้ MAC เป็น topic เสมอ
+  // Register all slots into WiFiMulti
+  // --------------------------------------------------
+  setupWifiMulti();
+
+  // --------------------------------------------------
+  // MQTT
   // --------------------------------------------------
   snprintf(mqttTopic,        sizeof(mqttTopic),        "metabreath/%s/reading", deviceId);
   snprintf(mqttCommandTopic, sizeof(mqttCommandTopic), "metabreath/%s/command", deviceId);
@@ -240,7 +306,7 @@ void loop() {
   // --------------------------------------------------
   // PRESSURE
   // --------------------------------------------------
-  int   pressureADC     = readAverageADC(PRESSURE_PIN, 20);  // 50→20 samples
+  int   pressureADC     = readAverageADC(PRESSURE_PIN, 20);
   float pressureVoltage = adcToVoltage(pressureADC);
   float pressureKPa     = voltageToPressureKPa(pressureVoltage);
   float pressurePa      = pressureKPa * 1000.0;
@@ -305,6 +371,9 @@ void loop() {
   Serial.println(shtOK ? "SHT31              : OK" : "SHT31              : CHECK SENSOR");
   Serial.print("Network            : WiFi=");
   Serial.print(WiFi.isConnected() ? "OK" : "DOWN");
+  if (WiFi.isConnected()) {
+    Serial.print(" ("); Serial.print(WiFi.SSID()); Serial.print(")");
+  }
   Serial.print("  MQTT=");
   Serial.println(mqttClient.connected() ? "OK" : "DOWN");
   Serial.println("==============================================");
@@ -315,7 +384,42 @@ void loop() {
   }
 
   readingNumber++;
-  delay(500);   // 3000→500ms; backend gate discards outside sessions anyway
+  delay(500);
+}
+
+// =====================================================
+// WIFI MULTI HELPERS
+// =====================================================
+void loadExtraWifiSlots() {
+  prefs.begin("wifiSlots", true);
+  prefs.getString("ssid2", "").toCharArray(slot2ssid, sizeof(slot2ssid));
+  prefs.getString("pass2", "").toCharArray(slot2pass, sizeof(slot2pass));
+  prefs.getString("ssid3", "").toCharArray(slot3ssid, sizeof(slot3ssid));
+  prefs.getString("pass3", "").toCharArray(slot3pass, sizeof(slot3pass));
+  prefs.end();
+
+  Serial.printf("[WiFi] Slots loaded — slot2=%s  slot3=%s\n",
+    strlen(slot2ssid) > 0 ? slot2ssid : "(empty)",
+    strlen(slot3ssid) > 0 ? slot3ssid : "(empty)");
+}
+
+void setupWifiMulti() {
+  // Slot 1: WiFiManager's stored credential (already connected at this point)
+  String ssid1 = WiFi.SSID();
+  String pass1 = WiFi.psk();
+  if (ssid1.length() > 0) {
+    wifiMulti.addAP(ssid1.c_str(), pass1.c_str());
+    Serial.printf("[WiFi] Multi slot1: %s\n", ssid1.c_str());
+  }
+  if (strlen(slot2ssid) > 0) {
+    wifiMulti.addAP(slot2ssid, slot2pass);
+    Serial.printf("[WiFi] Multi slot2: %s\n", slot2ssid);
+  }
+  if (strlen(slot3ssid) > 0) {
+    wifiMulti.addAP(slot3ssid, slot3pass);
+    Serial.printf("[WiFi] Multi slot3: %s\n", slot3ssid);
+  }
+  wifiMultiReady = true;
 }
 
 // =====================================================
@@ -413,6 +517,11 @@ void handleResetWifi() {
   prefs.clear();
   prefs.end();
 
+  // Clear extra slots too
+  prefs.begin("wifiSlots", false);
+  prefs.clear();
+  prefs.end();
+
   delay(500);
   ESP.restart();
 }
@@ -472,13 +581,23 @@ void connectMQTT() {
 void ensureNetwork() {
   if (!WiFi.isConnected()) {
     Serial.println("[Net] WiFi dropped — reconnecting");
-    WiFi.reconnect();
-    unsigned long start = millis();
-    while (!WiFi.isConnected() && millis() - start < 15000) {
-      delay(500);
-      Serial.print(".");
+    if (wifiMultiReady) {
+      Serial.print("[Net] Trying all slots...");
+      uint8_t result = wifiMulti.run(15000);
+      if (result == WL_CONNECTED) {
+        Serial.printf(" Connected to %s\n", WiFi.SSID().c_str());
+      } else {
+        Serial.println(" Failed");
+      }
+    } else {
+      WiFi.reconnect();
+      unsigned long start = millis();
+      while (!WiFi.isConnected() && millis() - start < 15000) {
+        delay(500);
+        Serial.print(".");
+      }
+      Serial.println();
     }
-    Serial.println();
   }
   if (WiFi.isConnected() && !mqttClient.connected()) {
     connectMQTT();
