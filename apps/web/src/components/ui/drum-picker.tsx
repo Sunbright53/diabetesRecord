@@ -12,10 +12,11 @@ interface DrumPickerProps {
   label: string;
   unit: string;
   bgImage: string;
+  format?: (v: number) => string;
   className?: string;
 }
 
-export function DrumPicker({ values, value, onChange, label, unit, bgImage, className }: DrumPickerProps) {
+export function DrumPicker({ values, value, onChange, label, unit, bgImage, format, className }: DrumPickerProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const snapTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [centerIdx, setCenterIdx] = useState(Math.max(0, values.indexOf(value)));
@@ -51,7 +52,7 @@ export function DrumPicker({ values, value, onChange, label, unit, bgImage, clas
         style={{ backgroundImage: `url('${bgImage}')` }}
       />
       {/* Dark scrim */}
-      <div className="absolute inset-0 bg-black/60" />
+      <div className="absolute inset-0 bg-black/75" />
 
       {/* Top/bottom gradient fade */}
       <div
@@ -102,21 +103,21 @@ export function DrumPicker({ values, value, onChange, label, unit, bgImage, clas
           return (
             <div
               key={v}
-              style={{ height: ITEM_H, scrollSnapAlign: "center" }}
+              style={{ height: ITEM_H, scrollSnapAlign: "center", scrollSnapStop: "always" }}
               className="flex items-center justify-center"
             >
               <span
                 style={{
                   color: "white",
-                  fontSize: dist === 0 ? "1.8rem" : "1.1rem",
+                  fontSize: dist === 0 ? "1.8rem" : "1.05rem",
                   fontWeight: dist === 0 ? 700 : 400,
-                  opacity: dist === 0 ? 1 : 0.4,
+                  opacity: dist === 0 ? 1 : 0.35,
                   lineHeight: 1,
-                  transition: "font-size 0.1s ease, opacity 0.1s ease",
+                  transition: "font-size 0.08s ease, opacity 0.08s ease",
                   userSelect: "none",
                 }}
               >
-                {v}
+                {format ? format(v) : v}
               </span>
             </div>
           );

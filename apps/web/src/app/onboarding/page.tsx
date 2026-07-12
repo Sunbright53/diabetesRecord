@@ -39,11 +39,11 @@ export default function OnboardingPage() {
     resolver: zodResolver(bodySchema) as any,
   });
 
-  const WEIGHTS = Array.from({ length: 171 }, (_, i) => i + 30);   // 30–200 kg
+  const WEIGHTS = Array.from({ length: 341 }, (_, i) => Math.round((i * 0.5 + 30) * 10) / 10); // 30.0–200.0 kg (0.5 step)
   const HEIGHTS = Array.from({ length: 121 }, (_, i) => i + 100);  // 100–220 cm
   const AGES    = Array.from({ length: 81  }, (_, i) => i + 10);   // 10–90 yrs
 
-  const [drumWeight, setDrumWeight] = useState(65);
+  const [drumWeight, setDrumWeight] = useState(65.0);
   const [drumHeight, setDrumHeight] = useState(170);
   const [drumAge,    setDrumAge]    = useState(35);
   const [sexVal,     setSexVal]     = useState<"male" | "female" | "other" | "">("");
@@ -161,6 +161,7 @@ export default function OnboardingPage() {
                 label={t("onboarding.weight")}
                 unit="kg"
                 bgImage="/body-weight.webp"
+                format={(v) => v.toFixed(1)}
               />
               <DrumPicker
                 values={HEIGHTS}
@@ -168,7 +169,7 @@ export default function OnboardingPage() {
                 onChange={setDrumHeight}
                 label={t("onboarding.height")}
                 unit="cm"
-                bgImage="/body-height.webp"
+                bgImage="/body-height-2.png"
               />
               <DrumPicker
                 values={AGES}
