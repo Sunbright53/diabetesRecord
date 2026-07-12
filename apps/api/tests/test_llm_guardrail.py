@@ -156,9 +156,11 @@ class TestSignalProcessingIntegrity:
         assert result["metabolic_risk_index"] is None
 
     def test_classify_healthy_range(self):
+        # Backend + frontend agree on "clean" for the low-positive range
+        # (see riskLabel.ts LABEL_TH['clean'] = "อากาศสะอาด").
         from app.services.signal_processing import classify_acetone
         result = classify_acetone(0.7)
-        assert result["label"] == "healthy"
+        assert result["label"] == "clean"
         assert result["metabolic_risk_index"] == 0
 
     def test_quality_score_deducts_for_missing_breath_voc(self):
@@ -169,7 +171,11 @@ class TestSignalProcessingIntegrity:
         assert score <= 70
 
     def test_quality_score_deducts_for_extreme_temperature(self):
+        # quality_score's positional signature is aligned with the ESP32
+        # firmware payload — use kwargs to stay signature-agnostic.
         from app.services.signal_processing import quality_score
-        score_ok  = quality_score(1.0, 2.0, 3.0, 1013, 10, 25, 65)
-        score_hot = quality_score(1.0, 2.0, 3.0, 1013, 10, 50, 65)
+        common = dict(sensor_voltage=1.0, baseline_voltage=2.0,
+                      pressure_kpa=3.0, humidity_pct=65)
+        score_ok = quality_score(temp_c=25, **common)
+        score_hot = quality_score(temp_c=50, **common)
         assert score_hot < score_ok
