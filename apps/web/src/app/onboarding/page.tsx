@@ -6,8 +6,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { DobPicker } from "@/components/ui/dob-picker";
+import { DrumPicker } from "@/components/ui/drum-picker";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useT } from "@/lib/i18n";
@@ -35,10 +34,19 @@ export default function OnboardingPage() {
   const [subStep, setSubStep] = useState(0);
   const [saving, setSaving] = useState(false);
 
-  const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm<BodyData>({
+  const { handleSubmit, setValue } = useForm<BodyData>({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     resolver: zodResolver(bodySchema) as any,
   });
+
+  const WEIGHTS = Array.from({ length: 171 }, (_, i) => i + 30);   // 30–200 kg
+  const HEIGHTS = Array.from({ length: 121 }, (_, i) => i + 100);  // 100–220 cm
+  const AGES    = Array.from({ length: 81  }, (_, i) => i + 10);   // 10–90 yrs
+
+  const [drumWeight, setDrumWeight] = useState(65);
+  const [drumHeight, setDrumHeight] = useState(170);
+  const [drumAge,    setDrumAge]    = useState(35);
+  const [sexVal,     setSexVal]     = useState<"male" | "female" | "other" | "">("");
 
   const goal = user?.profile?.goal_type ?? "monitor";
   const GoalIcon = GOAL_ICON[goal] ?? LineChart;
@@ -135,95 +143,105 @@ export default function OnboardingPage() {
           </div>
         )}
 
-        {/* Step 1: Body metrics — one field group at a time */}
-        {step === 1 && (
+        {/* Step 1, subStep 0 — Drum pickers (dark card) */}
+        {step === 1 && subStep === 0 && (
+          <div className="rounded-2xl bg-slate-950 border border-slate-800 overflow-hidden">
+            <div className="px-5 pt-5 pb-3 text-center">
+              <h2 className="text-base font-bold text-white tracking-wide uppercase">
+                {t("onboarding.bodyTitle")}
+              </h2>
+              <p className="text-xs text-white/45 mt-1">{t("onboarding.bodyHint")}</p>
+            </div>
+
+            <div className="px-4 space-y-3 pb-4">
+              <DrumPicker
+                values={WEIGHTS}
+                value={drumWeight}
+                onChange={setDrumWeight}
+                label={t("onboarding.weight")}
+                unit="kg"
+                bgImage="/body-weight.webp"
+              />
+              <DrumPicker
+                values={HEIGHTS}
+                value={drumHeight}
+                onChange={setDrumHeight}
+                label={t("onboarding.height")}
+                unit="cm"
+                bgImage="/body-height.webp"
+              />
+              <DrumPicker
+                values={AGES}
+                value={drumAge}
+                onChange={setDrumAge}
+                label={t("onboarding.age")}
+                unit={t("onboarding.ageUnit")}
+                bgImage="/body-age.webp"
+              />
+            </div>
+
+            <div className="px-4 pb-5 flex gap-2">
+              <Button variant="ghost" size="lg" className="flex-1 text-white/60 hover:text-white hover:bg-white/10"
+                onClick={() => setStep(0)}>
+                {t("common.back")}
+              </Button>
+              <Button size="lg" className="flex-1" onClick={() => {
+                setValue("weight_kg", drumWeight);
+                setValue("height_cm", drumHeight);
+                const birthYear = new Date().getFullYear() - drumAge;
+                setValue("dob", `${birthYear}-06-15`);
+                setSubStep(1);
+              }}>
+                {t("common.next")}
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* Step 1, subStep 1 — Sex selection */}
+        {step === 1 && subStep === 1 && (
           <div className="rounded-2xl bg-white border border-border-soft shadow-[0_4px_20px_rgba(20,20,20,0.06)] p-6 space-y-5">
-            {/* Header */}
             <div className="text-center space-y-3">
-              <div className="inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-mint-50 to-mint-100/60 border border-mint-200/60 shadow-[0_4px_12px_rgba(72,199,140,0.12)]">
+              <div className="inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-mint-50 to-mint-100/60 border border-mint-200/60">
                 <User size={28} className="text-mint-600" strokeWidth={1.4} />
               </div>
               <div>
                 <h2 className="text-xl font-bold text-gray-900 tracking-tight">{t("onboarding.bodyTitle")}</h2>
-                <p className="text-sm text-gray-500 mt-1">{t("onboarding.bodyHint")}</p>
+                <p className="text-sm text-gray-500 mt-1">{t("onboarding.sex")}</p>
               </div>
-              {/* Sub-step dot indicators */}
-              <div className="flex gap-1.5 justify-center pt-1">
-                {[0, 1, 2].map((i) => (
-                  <div
-                    key={i}
-                    className={twMerge(
-                      "h-1.5 rounded-full transition-all duration-300",
-                      i === subStep ? "w-6 bg-mint-500" : "w-1.5 bg-gray-200"
-                    )}
-                  />
+              <div className="flex gap-1.5 justify-center">
+                {[0, 1].map((i) => (
+                  <div key={i} className={twMerge(
+                    "h-1.5 rounded-full transition-all duration-300",
+                    i === subStep - 0 ? "w-6 bg-mint-500" : "w-1.5 bg-gray-200"
+                  )} />
                 ))}
               </div>
             </div>
 
-            {/* Content area — fixed min-height so card doesn't jump */}
-            <div className="min-h-[120px] flex flex-col justify-center">
-              {subStep === 0 && (
-                <div className="grid grid-cols-2 gap-3">
-                  <Input
-                    label={t("onboarding.height")}
-                    type="number"
-                    placeholder="170"
-                    error={errors.height_cm?.message}
-                    {...register("height_cm")}
-                  />
-                  <Input
-                    label={t("onboarding.weight")}
-                    type="number"
-                    step="0.1"
-                    placeholder="65"
-                    error={errors.weight_kg?.message}
-                    {...register("weight_kg")}
-                  />
-                </div>
-              )}
-
-              {subStep === 1 && (
-                <DobPicker
-                  label={t("onboarding.dob")}
-                  value={watch("dob")}
-                  onChange={(val) => setValue("dob", val)}
-                  locale={locale as "en" | "th"}
-                />
-              )}
-
-              {subStep === 2 && (
-                <div className="space-y-2">
-                  <p className="text-sm font-semibold text-gray-900">{t("onboarding.sex")}</p>
-                  <div className="grid grid-cols-3 gap-2">
-                    {(["male", "female", "other"] as const).map((s) => (
-                      <label
-                        key={s}
-                        className="flex cursor-pointer items-center justify-center rounded-xl border-2 border-gray-200 py-3 text-sm font-medium text-gray-700 transition-colors has-[:checked]:border-mint-500 has-[:checked]:bg-mint-50 has-[:checked]:text-mint-700"
-                      >
-                        <input type="radio" value={s} className="sr-only" {...register("sex")} />
-                        {t(`onboarding.${s}`)}
-                      </label>
-                    ))}
-                  </div>
-                </div>
-              )}
+            <div className="grid grid-cols-3 gap-2">
+              {(["male", "female", "other"] as const).map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => { setSexVal(s); setValue("sex", s); }}
+                  className={twMerge(
+                    "flex cursor-pointer items-center justify-center rounded-xl border-2 py-3 text-sm font-medium transition-colors",
+                    sexVal === s
+                      ? "border-mint-500 bg-mint-50 text-mint-700"
+                      : "border-gray-200 text-gray-700 hover:border-mint-300"
+                  )}
+                >
+                  {t(`onboarding.${s}`)}
+                </button>
+              ))}
             </div>
 
             <div className="flex gap-2">
-              <Button
-                variant="ghost"
-                size="lg"
-                className="flex-1"
-                onClick={() => subStep === 0 ? setStep(0) : setSubStep((s) => s - 1)}
-              >
+              <Button variant="ghost" size="lg" className="flex-1" onClick={() => setSubStep(0)}>
                 {t("common.back")}
               </Button>
-              <Button
-                size="lg"
-                className="flex-1"
-                onClick={() => subStep < 2 ? setSubStep((s) => s + 1) : setStep(2)}
-              >
+              <Button size="lg" className="flex-1" onClick={() => setStep(2)}>
                 {t("common.next")}
               </Button>
             </div>
@@ -234,37 +252,37 @@ export default function OnboardingPage() {
         {step === 2 && (
           <form
             onSubmit={handleSubmit(finish)}
-            className="rounded-2xl bg-white border border-border-soft shadow-[0_1px_2px_rgba(20,20,20,0.03)] p-6 space-y-5"
+            className="rounded-2xl bg-white border border-border-soft shadow-[0_1px_2px_rgba(20,20,20,0.03)] p-5 space-y-4"
           >
             <div className="text-center">
-              <div className="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-mint-50 border border-mint-100">
-                <Bell size={24} className="text-mint-600" strokeWidth={1.4} />
+              <div className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-mint-50 border border-mint-100">
+                <Bell size={22} className="text-mint-600" strokeWidth={1.4} />
               </div>
-              <h2 className="text-lg font-semibold text-gray-900 mt-4 tracking-tight">
+              <h2 className="text-lg font-semibold text-gray-900 mt-3 tracking-tight">
                 {t("onboarding.doneTitle")}
               </h2>
-              <p className="text-sm text-muted mt-2 leading-relaxed">
+              <p className="text-sm text-muted mt-1 leading-relaxed">
                 {t("onboarding.doneSubtitle")}
               </p>
             </div>
 
-            <div className="rounded-xl bg-mint-50 border border-mint-200/60 p-4 space-y-3">
-              <p className="text-xs font-bold text-mint-700 text-center uppercase tracking-widest">
+            <div className="rounded-xl bg-mint-50 border border-mint-200/60 p-3 space-y-2">
+              <p className="text-[11px] font-bold text-mint-700 text-center uppercase tracking-widest">
                 {t("onboarding.tipTitle")}
               </p>
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 {([
                   { emoji: "🌅", key: "tipTime1" },
                   { emoji: "🍳", key: "tipTime2" },
                   { emoji: "⏱️", key: "tipTime3" },
                 ] as const).map(({ emoji, key }) => (
-                  <div key={key} className="flex items-center gap-3 bg-white rounded-lg px-3 py-2 border border-mint-100 shadow-[0_1px_3px_rgba(72,199,140,0.08)]">
-                    <span className="text-base leading-none">{emoji}</span>
-                    <span className="text-sm font-medium text-gray-700">{t(`onboarding.${key}`)}</span>
+                  <div key={key} className="flex items-center gap-2.5 bg-white rounded-lg px-3 py-1.5 border border-mint-100 shadow-[0_1px_3px_rgba(72,199,140,0.08)]">
+                    <span className="text-sm leading-none">{emoji}</span>
+                    <span className="text-[13px] font-medium text-gray-700">{t(`onboarding.${key}`)}</span>
                   </div>
                 ))}
               </div>
-              <p className="text-xs text-mint-600 font-medium text-center italic">
+              <p className="text-[11px] text-mint-600 font-medium text-center italic">
                 {t("onboarding.tipFooter")}
               </p>
             </div>
@@ -275,7 +293,7 @@ export default function OnboardingPage() {
                 variant="ghost"
                 size="lg"
                 className="flex-1"
-                onClick={() => { setStep(1); setSubStep(2); }}
+                onClick={() => { setStep(1); setSubStep(1); }}
               >
                 {t("common.back")}
               </Button>

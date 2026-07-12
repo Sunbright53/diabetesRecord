@@ -104,6 +104,8 @@ export const th = {
     height: "ส่วนสูง (cm)",
     weight: "น้ำหนัก (kg)",
     dob: "วันเกิด",
+    age: "อายุของคุณ",
+    ageUnit: "ปี",
     sex: "เพศสภาพ",
     male: "ชาย",
     female: "หญิง",

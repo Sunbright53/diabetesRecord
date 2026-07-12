@@ -106,6 +106,8 @@ export const en: Dict = {
     height: "Height (cm)",
     weight: "Weight (kg)",
     dob: "Date of birth",
+    age: "Your age",
+    ageUnit: "years",
     sex: "Gender",
     male: "Male",
     female: "Female",
