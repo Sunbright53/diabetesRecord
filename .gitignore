@@ -56,4 +56,10 @@ Thumbs.db
 
 # large datasets & reference material (kept locally only)
 /data/
+/Data_gas/
 /แข่งชนะ by Coach Bright_NSC/
+
+# ML model binaries & training artifacts (large binaries, store externally)
+apps/api/models/rf_model.joblib
+apps/api/models/xgb_model.joblib
+apps/api/tests/AI_TEST_REPORT.pdf
