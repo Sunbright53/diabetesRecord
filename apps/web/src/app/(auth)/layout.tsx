@@ -3,8 +3,6 @@
 import { useAuth } from "@/lib/auth";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
-import { BrandMark } from "@/components/brand/logo";
-import { LangSwitcher } from "@/components/lang-switcher";
 
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -38,22 +36,23 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
       {/* Dark scrim over background image */}
       <div className="absolute inset-0 bg-slate-950/52" />
 
-      <LangSwitcher />
-
       <div className="relative z-10 w-full max-w-sm">
         {/* Brand section */}
         <div className="mb-10 flex flex-col items-center text-center select-none">
-          {/* Logo mark — glass ring with mint glow */}
-          <div className="mb-5 inline-flex h-16 w-16 items-center justify-center rounded-2xl border border-white/20 bg-white/10 backdrop-blur-sm shadow-[0_0_28px_rgba(0,200,150,0.28)]">
-            <BrandMark className="h-9 w-9 text-mint-400" />
-          </div>
-
-          {/* App name: META heavy sans-serif + Breath italic display serif */}
-          <div className="leading-[1.05]">
-            <span className="block text-[3.25rem] font-black uppercase tracking-tight text-white">
+          {/* App name: META solid + Breath wind-fade */}
+          <div className="flex items-baseline gap-2">
+            <span className="text-[3rem] font-black uppercase tracking-tight text-white leading-none">
               Meta
             </span>
-            <span className="block font-display text-[2.6rem] font-bold italic tracking-[0.08em] text-mint-400">
+            <span
+              className="font-display text-[3rem] font-bold tracking-[0.12em] leading-none uppercase"
+              style={{
+                backgroundImage: "linear-gradient(to right, #3CC9A0 30%, rgba(60,201,160,0.08))",
+                WebkitBackgroundClip: "text",
+                WebkitTextFillColor: "transparent",
+                backgroundClip: "text",
+              }}
+            >
               Breath
             </span>
           </div>

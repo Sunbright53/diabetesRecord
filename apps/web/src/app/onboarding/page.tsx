@@ -75,9 +75,7 @@ export default function OnboardingPage() {
       <div className="w-full max-w-md">
         {/* Header */}
         <div className="text-center mb-8">
-          <div className="inline-flex h-14 w-14 items-center justify-center rounded-2xl border border-border-soft bg-white mb-4 shadow-[0_1px_2px_rgba(20,20,20,0.03)]">
-            <BrandMark className="h-7 w-7" />
-          </div>
+          <BrandMark className="h-14 w-14 rounded-2xl mb-4 mx-auto block" />
           <h1 className="text-2xl font-semibold text-gray-900 tracking-tight">{t("onboarding.welcome")}</h1>
           <p className="text-sm text-muted mt-1">
             {t("onboarding.hello")}, {user?.profile?.display_name ?? user?.username}
