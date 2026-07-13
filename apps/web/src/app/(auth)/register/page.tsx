@@ -189,7 +189,7 @@ export default function RegisterPage() {
                         src={img}
                         alt={label}
                         className="w-full object-cover"
-                        style={{ height: 88 }}
+                        style={{ height: 72 }}
                         draggable={false}
                       />
                       {active && (
