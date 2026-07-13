@@ -215,7 +215,7 @@ export default function OnboardingPage() {
             {/* Figure carousel — swipe or tap to select */}
             <div
               className="relative mx-4 overflow-hidden rounded-xl bg-slate-900/40 select-none"
-              style={{ height: 268 }}
+              style={{ height: 340 }}
               onPointerDown={(e) => {
                 swipeRef.current = { startX: e.clientX };
                 e.currentTarget.setPointerCapture(e.pointerId);
