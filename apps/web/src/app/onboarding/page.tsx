@@ -219,7 +219,7 @@ export default function OnboardingPage() {
               {/* Male panel */}
               <button
                 type="button"
-                className="relative flex-1 overflow-hidden focus:outline-none"
+                className="relative flex-1 overflow-hidden flex items-end justify-center focus:outline-none"
                 style={{ background: "linear-gradient(165deg, #0d1829 0%, #060b12 100%)" }}
                 onClick={() => { setSexVal("male"); setValue("sex", "male"); }}
               >
@@ -244,10 +244,9 @@ export default function OnboardingPage() {
                 <img
                   src="/gender-male.png"
                   alt={t("onboarding.male")}
-                  className="pointer-events-none absolute"
+                  className="pointer-events-none"
                   style={{
-                    height: "100%", width: "auto",
-                    bottom: 0, left: "50%", transform: "translateX(-50%)",
+                    height: "100%", width: "auto", flexShrink: 0,
                     opacity: sexVal === "female" || sexVal === "other" ? 0.35 : 1,
                     transition: "opacity 0.3s ease",
                   } as React.CSSProperties}
@@ -273,7 +272,7 @@ export default function OnboardingPage() {
               {/* Female panel */}
               <button
                 type="button"
-                className="relative flex-1 overflow-hidden focus:outline-none"
+                className="relative flex-1 overflow-hidden flex items-end justify-center focus:outline-none"
                 style={{ background: "linear-gradient(165deg, #0d1829 0%, #060b12 100%)" }}
                 onClick={() => { setSexVal("female"); setValue("sex", "female"); }}
               >
@@ -296,10 +295,9 @@ export default function OnboardingPage() {
                 <img
                   src="/gender-female.png"
                   alt={t("onboarding.female")}
-                  className="pointer-events-none absolute"
+                  className="pointer-events-none"
                   style={{
-                    height: "100%", width: "auto",
-                    bottom: 0, left: "50%", transform: "translateX(-50%)",
+                    height: "100%", width: "auto", flexShrink: 0,
                     opacity: sexVal === "female" ? 1 : 0.35,
                     transition: "opacity 0.3s ease",
                   } as React.CSSProperties}
