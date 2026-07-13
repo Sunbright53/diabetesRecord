@@ -216,7 +216,7 @@ export default function OnboardingPage() {
             {/* Figure carousel — swipe or tap to select */}
             <OnboardingFigureBg
               className="mx-4 cursor-pointer"
-              style={{ height: 340 }}
+              style={{ aspectRatio: "3 / 4", maxHeight: "420px" } as React.CSSProperties}
               onPointerDown={(e) => {
                 swipeRef.current = { startX: e.clientX };
                 e.currentTarget.setPointerCapture(e.pointerId);
@@ -243,9 +243,9 @@ export default function OnboardingPage() {
                 }}
               />
 
-              {/* Male figure — crossfade, no translate artifact */}
+              {/* Male figure — crossfade, no scale, positioned from bottom */}
               <div
-                className="absolute inset-0 flex items-end justify-center"
+                className="absolute inset-0"
                 style={{
                   opacity: sexVal === "female" ? 0 : 1,
                   pointerEvents: sexVal === "female" ? "none" : "auto",
@@ -256,15 +256,24 @@ export default function OnboardingPage() {
                 <img
                   src="/gender-male.png"
                   alt={t("onboarding.male")}
-                  className="w-full h-full object-contain object-bottom pointer-events-none"
-                  style={{ transform: "scale(1.55)", transformOrigin: "bottom center" }}
+                  className="pointer-events-none"
+                  style={{
+                    position: "absolute",
+                    bottom: 0,
+                    left: "50%",
+                    transform: "translateX(-50%)",
+                    height: "100%",
+                    width: "auto",
+                    objectFit: "contain",
+                    objectPosition: "bottom center",
+                  } as React.CSSProperties}
                   draggable={false}
                 />
               </div>
 
               {/* Female figure */}
               <div
-                className="absolute inset-0 flex items-end justify-center"
+                className="absolute inset-0"
                 style={{
                   opacity: sexVal === "female" ? 1 : 0,
                   pointerEvents: sexVal === "female" ? "auto" : "none",
@@ -275,8 +284,17 @@ export default function OnboardingPage() {
                 <img
                   src="/gender-female.png"
                   alt={t("onboarding.female")}
-                  className="w-full h-full object-contain object-bottom pointer-events-none"
-                  style={{ transform: "scale(1.55)", transformOrigin: "bottom center" }}
+                  className="pointer-events-none"
+                  style={{
+                    position: "absolute",
+                    bottom: 0,
+                    left: "50%",
+                    transform: "translateX(-50%)",
+                    height: "100%",
+                    width: "auto",
+                    objectFit: "contain",
+                    objectPosition: "bottom center",
+                  } as React.CSSProperties}
                   draggable={false}
                 />
               </div>
