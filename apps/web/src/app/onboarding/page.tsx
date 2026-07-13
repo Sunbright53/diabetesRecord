@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -12,7 +12,7 @@ import { useAuth } from "@/lib/auth";
 import { useT } from "@/lib/i18n";
 import { twMerge } from "tailwind-merge";
 import { BrandMark } from "@/components/brand/logo";
-import { Leaf, Clock, Dumbbell, LineChart, Bell, User, type LucideIcon } from "lucide-react";
+import { Leaf, Clock, Dumbbell, LineChart, Bell, type LucideIcon } from "lucide-react";
 
 const bodySchema = z.object({
   height_cm: z.coerce.number().min(100).max(250).optional(),
@@ -47,6 +47,7 @@ export default function OnboardingPage() {
   const [drumHeight, setDrumHeight] = useState(170);
   const [drumAge,    setDrumAge]    = useState(35);
   const [sexVal,     setSexVal]     = useState<"male" | "female" | "other" | "">("");
+  const swipeRef = useRef<{ startX: number } | null>(null);
 
   const goal = user?.profile?.goal_type ?? "monitor";
   const GoalIcon = GOAL_ICON[goal] ?? LineChart;
@@ -191,6 +192,7 @@ export default function OnboardingPage() {
                 setValue("height_cm", drumHeight);
                 const birthYear = new Date().getFullYear() - drumAge;
                 setValue("dob", `${birthYear}-06-15`);
+                if (!sexVal) { setSexVal("male"); setValue("sex", "male"); }
                 setSubStep(1);
               }}>
                 {t("common.next")}
@@ -199,53 +201,139 @@ export default function OnboardingPage() {
           </div>
         )}
 
-        {/* Step 1, subStep 1 — Sex selection */}
+        {/* Step 1, subStep 1 — Gender carousel */}
         {step === 1 && subStep === 1 && (
-          <div className="rounded-2xl bg-white border border-border-soft shadow-[0_4px_20px_rgba(20,20,20,0.06)] p-6 space-y-5">
-            <div className="text-center space-y-3">
-              <div className="inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-mint-50 to-mint-100/60 border border-mint-200/60">
-                <User size={28} className="text-mint-600" strokeWidth={1.4} />
+          <div className="rounded-2xl bg-slate-950 border border-slate-800 overflow-hidden">
+            {/* Header */}
+            <div className="px-5 pt-5 pb-3 text-center">
+              <h2 className="text-base font-bold text-white tracking-wide uppercase">
+                {t("onboarding.bodyTitle")}
+              </h2>
+              <p className="text-xs text-white/45 mt-1">{t("onboarding.sex")}</p>
+            </div>
+
+            {/* Figure carousel — swipe or tap to select */}
+            <div
+              className="relative mx-4 overflow-hidden rounded-xl bg-slate-900/40 select-none"
+              style={{ height: 268 }}
+              onPointerDown={(e) => {
+                swipeRef.current = { startX: e.clientX };
+                e.currentTarget.setPointerCapture(e.pointerId);
+              }}
+              onPointerUp={(e) => {
+                if (!swipeRef.current) return;
+                const delta = e.clientX - swipeRef.current.startX;
+                swipeRef.current = null;
+                if (Math.abs(delta) < 8) return; // tap, not swipe
+                if (delta < -30) { setSexVal("female"); setValue("sex", "female"); }
+                else if (delta > 30) { setSexVal("male"); setValue("sex", "male"); }
+              }}
+              onPointerCancel={() => { swipeRef.current = null; }}
+            >
+              {/* Mint glow blob behind selected figure */}
+              <div
+                className="absolute pointer-events-none rounded-full bg-mint-400/18 blur-3xl transition-all duration-500"
+                style={{
+                  width: "55%", height: "80%",
+                  top: "10%",
+                  left: sexVal === "female" ? "22%" : "22%",
+                }}
+              />
+
+              {/* Male figure */}
+              <div
+                className="absolute bottom-0 cursor-pointer"
+                style={{
+                  width: "58%", height: "100%",
+                  left: "50%",
+                  transform: sexVal === "female"
+                    ? "translateX(-145%) scale(0.68)"
+                    : "translateX(-50%) scale(1)",
+                  opacity: sexVal === "female" ? 0.28 : 1,
+                  transition: "transform 0.35s ease, opacity 0.35s ease",
+                  display: "flex", alignItems: "flex-end", justifyContent: "center",
+                }}
+                onClick={() => { setSexVal("male"); setValue("sex", "male"); }}
+              >
+                <img
+                  src="/gender-male.png"
+                  alt={t("onboarding.male")}
+                  className="h-full object-contain object-bottom pointer-events-none"
+                  draggable={false}
+                />
               </div>
-              <div>
-                <h2 className="text-xl font-bold text-gray-900 tracking-tight">{t("onboarding.bodyTitle")}</h2>
-                <p className="text-sm text-gray-500 mt-1">{t("onboarding.sex")}</p>
+
+              {/* Female figure */}
+              <div
+                className="absolute bottom-0 cursor-pointer"
+                style={{
+                  width: "58%", height: "100%",
+                  left: "50%",
+                  transform: sexVal === "female"
+                    ? "translateX(-50%) scale(1)"
+                    : "translateX(45%) scale(0.68)",
+                  opacity: sexVal === "female" ? 1 : 0.28,
+                  transition: "transform 0.35s ease, opacity 0.35s ease",
+                  display: "flex", alignItems: "flex-end", justifyContent: "center",
+                }}
+                onClick={() => { setSexVal("female"); setValue("sex", "female"); }}
+              >
+                <img
+                  src="/gender-female.png"
+                  alt={t("onboarding.female")}
+                  className="h-full object-contain object-bottom pointer-events-none"
+                  draggable={false}
+                />
               </div>
-              <div className="flex gap-1.5 justify-center">
-                {[0, 1].map((i) => (
-                  <div key={i} className={twMerge(
-                    "h-1.5 rounded-full transition-all duration-300",
-                    i === subStep - 0 ? "w-6 bg-mint-500" : "w-1.5 bg-gray-200"
-                  )} />
+            </div>
+
+            {/* Label + selection dots */}
+            <div className="text-center pt-3 pb-1">
+              <p className="text-white font-bold text-lg tracking-tight">
+                {sexVal === "female" ? t("onboarding.female") : t("onboarding.male")}
+              </p>
+              <div className="flex gap-2 justify-center mt-2">
+                {(["male", "female"] as const).map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => { setSexVal(s); setValue("sex", s); }}
+                    className={twMerge(
+                      "h-1.5 rounded-full transition-all duration-300",
+                      sexVal === s || (sexVal === "" && s === "male")
+                        ? "w-6 bg-mint-500"
+                        : "w-1.5 bg-white/25"
+                    )}
+                  />
                 ))}
               </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-2">
-              {(["male", "female", "other"] as const).map((s) => (
-                <button
-                  key={s}
-                  type="button"
-                  onClick={() => { setSexVal(s); setValue("sex", s); }}
-                  className={twMerge(
-                    "flex cursor-pointer items-center justify-center rounded-xl border-2 py-3 text-sm font-medium transition-colors",
-                    sexVal === s
-                      ? "border-mint-500 bg-mint-50 text-mint-700"
-                      : "border-gray-200 text-gray-700 hover:border-mint-300"
-                  )}
-                >
-                  {t(`onboarding.${s}`)}
-                </button>
-              ))}
-            </div>
-
-            <div className="flex gap-2">
-              <Button variant="ghost" size="lg" className="flex-1" onClick={() => setSubStep(0)}>
+            {/* Nav buttons */}
+            <div className="px-4 pt-3 pb-3 flex gap-2">
+              <Button
+                variant="ghost" size="lg"
+                className="flex-1 text-white/60 hover:text-white hover:bg-white/10"
+                onClick={() => setSubStep(0)}
+              >
                 {t("common.back")}
               </Button>
               <Button size="lg" className="flex-1" onClick={() => setStep(2)}>
                 {t("common.next")}
               </Button>
             </div>
+
+            {/* Other / prefer not to say */}
+            <button
+              type="button"
+              onClick={() => { setSexVal("other"); setValue("sex", "other"); }}
+              className={twMerge(
+                "w-full pb-5 text-center text-sm transition-colors",
+                sexVal === "other" ? "text-mint-400 font-medium" : "text-white/28 hover:text-white/50"
+              )}
+            >
+              {t("onboarding.other")} →
+            </button>
           </div>
         )}
 
