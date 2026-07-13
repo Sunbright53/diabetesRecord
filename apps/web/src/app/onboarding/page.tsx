@@ -7,6 +7,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { DrumPicker } from "@/components/ui/drum-picker";
+import { OnboardingFigureBg } from "@/components/ui/onboarding-figure-bg";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useT } from "@/lib/i18n";
@@ -213,8 +214,8 @@ export default function OnboardingPage() {
             </div>
 
             {/* Figure carousel — swipe or tap to select */}
-            <div
-              className="relative mx-4 overflow-hidden rounded-xl bg-slate-900/40 select-none"
+            <OnboardingFigureBg
+              className="mx-4 cursor-pointer"
               style={{ height: 340 }}
               onPointerDown={(e) => {
                 swipeRef.current = { startX: e.clientX };
@@ -224,68 +225,73 @@ export default function OnboardingPage() {
                 if (!swipeRef.current) return;
                 const delta = e.clientX - swipeRef.current.startX;
                 swipeRef.current = null;
-                if (Math.abs(delta) < 8) return; // tap, not swipe
+                if (Math.abs(delta) < 8) return;
                 if (delta < -30) { setSexVal("female"); setValue("sex", "female"); }
                 else if (delta > 30) { setSexVal("male"); setValue("sex", "male"); }
               }}
               onPointerCancel={() => { swipeRef.current = null; }}
             >
-              {/* Mint glow blob behind selected figure */}
+              {/* Brand glow behind head/shoulders of active figure */}
               <div
-                className="absolute pointer-events-none rounded-full bg-mint-400/18 blur-3xl transition-all duration-500"
+                aria-hidden
+                className="pointer-events-none absolute blur-3xl rounded-full"
                 style={{
-                  width: "55%", height: "80%",
-                  top: "10%",
-                  left: sexVal === "female" ? "22%" : "22%",
+                  width: "62%", height: "68%",
+                  top: "4%", left: "19%",
+                  background:
+                    "radial-gradient(ellipse at 50% 40%, rgba(72,199,140,0.22) 0%, transparent 70%)",
                 }}
               />
 
-              {/* Male figure */}
+              {/* Male figure — crossfade, no translate artifact */}
               <div
-                className="absolute bottom-0 cursor-pointer"
+                className="absolute inset-0 flex items-end justify-center"
                 style={{
-                  width: "58%", height: "100%",
-                  left: "50%",
-                  transform: sexVal === "female"
-                    ? "translateX(-145%) scale(0.68)"
-                    : "translateX(-50%) scale(1)",
-                  opacity: sexVal === "female" ? 0.28 : 1,
-                  transition: "transform 0.35s ease, opacity 0.35s ease",
-                  display: "flex", alignItems: "flex-end", justifyContent: "center",
+                  opacity: sexVal === "female" ? 0 : 1,
+                  pointerEvents: sexVal === "female" ? "none" : "auto",
+                  transition: "opacity 0.3s ease",
                 }}
                 onClick={() => { setSexVal("male"); setValue("sex", "male"); }}
               >
                 <img
                   src="/gender-male.png"
                   alt={t("onboarding.male")}
-                  className="h-full object-contain object-bottom pointer-events-none"
+                  className="w-full h-full object-contain object-bottom pointer-events-none"
+                  style={{ transform: "scale(1.55)", transformOrigin: "bottom center" }}
                   draggable={false}
                 />
               </div>
 
               {/* Female figure */}
               <div
-                className="absolute bottom-0 cursor-pointer"
+                className="absolute inset-0 flex items-end justify-center"
                 style={{
-                  width: "58%", height: "100%",
-                  left: "50%",
-                  transform: sexVal === "female"
-                    ? "translateX(-50%) scale(1)"
-                    : "translateX(45%) scale(0.68)",
-                  opacity: sexVal === "female" ? 1 : 0.28,
-                  transition: "transform 0.35s ease, opacity 0.35s ease",
-                  display: "flex", alignItems: "flex-end", justifyContent: "center",
+                  opacity: sexVal === "female" ? 1 : 0,
+                  pointerEvents: sexVal === "female" ? "auto" : "none",
+                  transition: "opacity 0.3s ease",
                 }}
                 onClick={() => { setSexVal("female"); setValue("sex", "female"); }}
               >
                 <img
                   src="/gender-female.png"
                   alt={t("onboarding.female")}
-                  className="h-full object-contain object-bottom pointer-events-none"
+                  className="w-full h-full object-contain object-bottom pointer-events-none"
+                  style={{ transform: "scale(1.55)", transformOrigin: "bottom center" }}
                   draggable={false}
                 />
               </div>
-            </div>
+
+              {/* Ground shadow — anchors figure to the scene */}
+              <div
+                aria-hidden
+                className="pointer-events-none absolute bottom-0 left-1/2 -translate-x-1/2"
+                style={{
+                  width: "52%", height: 52,
+                  background:
+                    "radial-gradient(ellipse 100% 100% at 50% 100%, rgba(0,0,0,0.65) 0%, transparent 70%)",
+                }}
+              />
+            </OnboardingFigureBg>
 
             {/* Label + selection dots */}
             <div className="text-center pt-3 pb-1">
