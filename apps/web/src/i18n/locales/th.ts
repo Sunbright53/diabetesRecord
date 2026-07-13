@@ -109,7 +109,7 @@ export const th = {
     sex: "เพศสภาพ",
     male: "ชาย",
     female: "หญิง",
-    other: "อื่น ๆ",
+    other: "ไม่ระบุเพศ",
     doneTitle: "พร้อมเริ่มแล้ว",
     doneSubtitle: "ตั้งการแจ้งเตือนได้ทุกเมื่อในหน้า Profile",
     tip: "เคล็ดลับ: บันทึกข้อมูลทุกวันเพื่อสะสม Streak และรับ XP",

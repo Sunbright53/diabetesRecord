@@ -111,7 +111,7 @@ export const en: Dict = {
     sex: "Gender",
     male: "Male",
     female: "Female",
-    other: "Other",
+    other: "Prefer not to say",
     doneTitle: "Ready to start",
     doneSubtitle: "You can set up reminders anytime in your Profile.",
     tip: "Tip: Log daily to build your streak and earn XP",
