@@ -464,7 +464,7 @@ async def list_sessions(
     rows = (await db.exec(
         select(
             SensorReading.session_id.label("sid"),
-            func.max(SensorReading.device_id).label("device"),  # readings in one session share device
+            SensorReading.device_id.label("device"),  # constant within a session — safe in GROUP BY
             func.min(SensorReading.time).label("started"),
             func.max(SensorReading.time).label("ended"),
             func.count().label("n"),
@@ -479,7 +479,7 @@ async def list_sessions(
             SensorReading.session_id.is_not(None),
             SensorReading.time >= since,
         )
-        .group_by(SensorReading.session_id)
+        .group_by(SensorReading.session_id, SensorReading.device_id)
         .order_by(func.min(SensorReading.time).desc())
     )).all()
 
