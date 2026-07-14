@@ -138,6 +138,12 @@ export default function TrendsPage() {
     refetchInterval: 60_000,
   });
 
+  const { data: sessions } = useQuery({
+    queryKey: ["sensor", "sessions", days],
+    queryFn:  () => api.sensor.getSessions(days),
+    refetchInterval: 60_000,
+  });
+
   const ketoneData = (ketone ?? []).map((k) => ({
     date:  fmt(k.ts),
     value: +k.value_mmol.toFixed(2),
@@ -426,6 +432,109 @@ export default function TrendsPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* Per-session summary */}
+      <Card>
+        <CardContent className="pt-5">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <h2 className="font-semibold text-text-primary tracking-tight">สรุปรายครั้ง</h2>
+              <p className="text-xs text-muted mt-0.5">
+                แต่ละครั้งที่กด START · {days === 1 ? "วันนี้" : `${days} วันล่าสุด`}
+              </p>
+            </div>
+            {(sessions?.length ?? 0) > 0 && (
+              <Badge variant="mint">รวม {sessions!.length} ครั้ง</Badge>
+            )}
+          </div>
+
+          {(sessions?.length ?? 0) === 0 && (
+            <EmptyChart label="ยังไม่มี session การเป่าในช่วงนี้" />
+          )}
+
+          {(sessions?.length ?? 0) > 0 && (
+            <div className="overflow-x-auto -mx-4 px-4">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-border-soft text-muted">
+                    <th className="text-left  py-2 font-semibold">เวลา</th>
+                    <th className="text-right py-2 font-semibold">น</th>
+                    <th className="text-right py-2 font-semibold">เฉลี่ย</th>
+                    <th className="text-right py-2 font-semibold">สูงสุด</th>
+                    <th className="text-right py-2 font-semibold">แรงเป่า</th>
+                    <th className="text-right py-2 font-semibold">ระดับ</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sessions!.map((s) => {
+                    const zone = s.dominant_label ?? "unreliable";
+                    const zoneColor = ACETONE_ZONE_COLOR[zone] ?? "#9CA3AF";
+                    const started = new Date(s.started_at);
+                    return (
+                      <tr
+                        key={s.session_id}
+                        className="border-b border-border-soft/60 hover:bg-bg-raised transition-colors"
+                      >
+                        <td className="py-2.5 text-text-primary font-medium">
+                          <div className="flex items-center gap-1.5">
+                            <span
+                              className="h-2 w-2 rounded-full shrink-0"
+                              style={{ background: zoneColor }}
+                            />
+                            <div className="leading-tight">
+                              <div>
+                                {started.toLocaleDateString(dateLocale, {
+                                  day: "numeric",
+                                  month: "short",
+                                })}
+                              </div>
+                              <div className="text-[10px] text-muted">
+                                {started.toLocaleTimeString(dateLocale, {
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })}
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="py-2.5 text-right text-text-primary font-mono">
+                          {s.n_samples}
+                        </td>
+                        <td className="py-2.5 text-right text-text-primary font-mono font-semibold">
+                          {s.mean_acetone_delta != null
+                            ? convertFromMv(s.mean_acetone_delta, acUnit).toFixed(acDecimals)
+                            : "—"}
+                        </td>
+                        <td className="py-2.5 text-right text-muted font-mono">
+                          {s.peak_acetone_delta != null
+                            ? convertFromMv(s.peak_acetone_delta, acUnit).toFixed(acDecimals)
+                            : "—"}
+                        </td>
+                        <td className="py-2.5 text-right text-muted font-mono">
+                          {s.avg_pressure_kpa != null
+                            ? `${s.avg_pressure_kpa.toFixed(1)}`
+                            : "—"}
+                        </td>
+                        <td className="py-2.5 text-right">
+                          <span
+                            className="inline-block text-[10px] font-medium px-2 py-0.5 rounded-full"
+                            style={{
+                              background: `${zoneColor}22`,
+                              color: zoneColor,
+                            }}
+                          >
+                            {zone}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }
