@@ -34,7 +34,13 @@ export default function HomePage() {
 
   const { data: devices } = useQuery({ queryKey: ["sensor", "devices"], queryFn: api.sensor.listDevices });
   const { data: sharedDevices } = useQuery({ queryKey: ["sensor", "shared-devices"], queryFn: api.sensor.listSharedDevices, refetchInterval: 30_000 });
-  const deviceId = devices?.[0]?.id ?? sharedDevices?.find((d) => d.claimed_by_me)?.id;
+  // Fallback for shared-device users who released their claim: use last recorded device
+  const { data: recentSessions } = useQuery({
+    queryKey: ["sensor", "sessions", "home-fallback"],
+    queryFn: () => api.sensor.getSessions(30),
+  });
+  const lastRecordedDeviceId = recentSessions?.[0]?.device_id;
+  const deviceId = devices?.[0]?.id ?? sharedDevices?.find((d) => d.claimed_by_me)?.id ?? lastRecordedDeviceId;
   const { data: dailyStats } = useQuery({
     queryKey: ["sensor", "daily-stats", deviceId, 1],
     queryFn:  () => api.sensor.getDailyStats(deviceId!, 1),
@@ -86,7 +92,7 @@ export default function HomePage() {
         <p className="text-xs text-text-muted font-semibold uppercase tracking-widest mb-4">
           Metabolic Flexibility
         </p>
-        <FlexibilityBar data={flexData} loading={!!deviceId && flexLoading} />
+        <FlexibilityBar data={flexData} loading={!!deviceId && flexLoading} hasDevice={!!deviceId} />
       </div>
 
       {/* Acetone ring — secondary snapshot */}

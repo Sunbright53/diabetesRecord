@@ -332,21 +332,16 @@ async def predict_trend_classification(
       - /ai/predict/trend     : "How is the user's baseline changing over time?"
     Output labels: stable | increasing | decreasing | abnormal | None
     """
-    device_result = await db.exec(
-        select(Device).where(Device.id == body.device_id, Device.user_id == user.id)
-    )
-    if not device_result.first():
-        raise HTTPException(status_code=404, detail="Device not found")
-
+    # User-scoped: works for shared-device users who released their claim.
     if body.sequence:
         sequence = body.sequence
     else:
-        # Pull the most recent readings; downstream service handles the sequence
-        # length gate (min 7). We over-fetch a little in case some rows have
-        # missing acetone_delta and get filtered by the caller.
         readings_result = await db.exec(
             select(SensorReading)
-            .where(SensorReading.device_id == body.device_id)
+            .where(
+                SensorReading.device_id == body.device_id,
+                SensorReading.user_id == user.id,
+            )
             .order_by(SensorReading.time.desc())
             .limit(max(body.sessions, ml_inference.TREND_MIN_SEQUENCE_LENGTH))
         )
@@ -428,16 +423,15 @@ async def get_flexibility(
     db: AsyncSession = Depends(get_db),
 ):
     """Compute Metabolic Flexibility Score (0-100) from recent breath sessions."""
-    device_result = await db.exec(
-        select(Device).where(Device.id == body.device_id, Device.user_id == user.id)
-    )
-    if not device_result.first():
-        raise HTTPException(status_code=404, detail="Device not found")
-
+    # User-scoped: works for shared-device users who released their claim.
     since = datetime.utcnow() - timedelta(days=body.days)
     readings_result = await db.exec(
         select(SensorReading)
-        .where(SensorReading.device_id == body.device_id, SensorReading.time >= since)
+        .where(
+            SensorReading.device_id == body.device_id,
+            SensorReading.user_id == user.id,
+            SensorReading.time >= since,
+        )
         .order_by(SensorReading.time)
     )
     readings = readings_result.all()
