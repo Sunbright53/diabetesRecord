@@ -8,6 +8,34 @@ import { api, type TrendClass, type TrendClassifyResponse } from "@/lib/api";
 import { useT } from "@/lib/i18n";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { InfoButton } from "@/components/ui/InfoButton";
+
+function TrendInfo() {
+  return (
+    <InfoButton title="Long-term trend" ariaLabel="รายละเอียด Long-term trend">
+      <p>
+        แนวโน้ม <b>ระยะยาว</b> ของค่า baseline breath acetone ในหลาย session ที่ผ่านมา — บอกว่าค่า
+        <b>กำลังไปทางไหน</b> ไม่ใช่ค่าเดี่ยวตอนนี้
+      </p>
+      <p className="text-text-muted">
+        คำนวณจาก <b>14 sessions ล่าสุด</b> โดยใช้โมเดล LSTM (Long Short-Term Memory) — ต้องมีอย่างน้อย
+        5 sessions ถึงจะ classify ได้
+      </p>
+      <div className="bg-bg-elevated rounded-xl p-3 space-y-2">
+        <p className="text-xs text-text-muted font-semibold uppercase tracking-widest">4 ประเภทที่จำแนกได้</p>
+        <ul className="text-xs space-y-1.5">
+          <li>• <b>Stable</b> — ค่าคงที่ ไม่มีแนวโน้มที่ชัดเจน</li>
+          <li>• <b>Increasing</b> — baseline ไต่ขึ้น (เช่น เริ่ม keto, ออกกำลังเพิ่ม)</li>
+          <li>• <b>Decreasing</b> — baseline ลดลง (เช่น กลับมากินคาร์บ)</li>
+          <li>• <b>Abnormal</b> — มี jump ผิดปกติ ให้วัดซ้ำ</li>
+        </ul>
+      </div>
+      <p className="text-xs text-text-muted">
+        ต่างจาก "สูงสุดวันนี้" ตรงที่ดู pattern ข้าม noise ของแต่ละครั้ง — เป็น monitoring signal ไม่ใช่การวินิจฉัย
+      </p>
+    </InfoButton>
+  );
+}
 
 /**
  * TrendClassCard — surfaces the LSTM Trend Classifier output (Phase 3).
@@ -85,7 +113,10 @@ export function TrendClassCard({ deviceId, sessions = 14, className }: Props) {
     return (
       <Card className={className}>
         <CardContent>
-          <p className="text-sm text-muted">{t("trendClass.title")}</p>
+          <div className="flex items-start justify-between gap-3">
+            <p className="text-sm text-muted">{t("trendClass.title")}</p>
+            <TrendInfo />
+          </div>
           <p className="mt-2 text-sm text-fg">{t("trendClass.unknown")}</p>
         </CardContent>
       </Card>
@@ -141,11 +172,14 @@ function TrendClassCardBody({
               </p>
             </div>
           </div>
-          {!insufficient && (
-            <Badge className={twMerge("border-0", style.accent)}>
-              {Math.round(data.confidence * 100)}%
-            </Badge>
-          )}
+          <div className="flex items-center gap-1 shrink-0">
+            {!insufficient && (
+              <Badge className={twMerge("border-0", style.accent)}>
+                {Math.round(data.confidence * 100)}%
+              </Badge>
+            )}
+            <TrendInfo />
+          </div>
         </div>
 
         <p className="text-sm leading-relaxed text-fg-soft">

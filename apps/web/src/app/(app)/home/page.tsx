@@ -14,6 +14,7 @@ import { LABEL_TH, backendLabelToZone } from "@/lib/riskLabel";
 import { TodayMetricCard } from "@/components/cards/TodayMetricCard";
 import { CategoryCard } from "@/components/cards/CategoryCard";
 import { TrendClassCard } from "@/components/cards/TrendClassCard";
+import { InfoButton } from "@/components/ui/InfoButton";
 import Link from "next/link";
 import { Flame, ChevronRight, Check } from "lucide-react";
 
@@ -89,14 +90,58 @@ export default function HomePage() {
 
       {/* Flexibility Score — Layer 3 hero */}
       <div className="bg-bg-elevated rounded-3xl p-5">
-        <p className="text-xs text-text-muted font-semibold uppercase tracking-widest mb-4">
-          Metabolic Flexibility
-        </p>
+        <div className="flex items-start justify-between mb-4">
+          <p className="text-xs text-text-muted font-semibold uppercase tracking-widest">
+            Metabolic Flexibility
+          </p>
+          <InfoButton title="Metabolic Flexibility Score" ariaLabel="รายละเอียด Metabolic Flexibility">
+            <p>
+              คะแนน <b>0–100</b> ที่บอกว่าระบบเผาผลาญของคุณ <b>ยืดหยุ่น</b> แค่ไหน — สลับระหว่างเผาน้ำตาลกับเผาไขมันได้ดีเพียงใด
+            </p>
+            <p className="text-text-muted">
+              คำนวณจาก breath session ใน <b>14 วันย้อนหลัง</b> (ต้องมีอย่างน้อย 3 sessions)
+            </p>
+            <div className="bg-bg-elevated rounded-xl p-3 space-y-2">
+              <p className="text-xs text-text-muted font-semibold uppercase tracking-widest">3 มิติที่ประกอบเป็นคะแนน</p>
+              <ul className="text-xs space-y-1.5">
+                <li>• <b>Amplitude (40 pts)</b> — ค่า acetone ครอบคลุมหลายโซนไหม (fed_resting → transitional → fat_oxidation) ยิ่งกว้าง ยิ่งสูง</li>
+                <li>• <b>Return Speed (35 pts)</b> — ค่ากลับ baseline เร็วแค่ไหนหลังพีค</li>
+                <li>• <b>Appropriateness (25 pts)</b> — ค่า match กับ context ที่เลือก (fasting/post_meal/post_exercise/evening) ไหม</li>
+              </ul>
+            </div>
+            <p className="text-xs text-text-muted">
+              เป็น <b>monitoring signal</b> ไม่ใช่การวินิจฉัยทางการแพทย์
+            </p>
+          </InfoButton>
+        </div>
         <FlexibilityBar data={flexData} loading={!!deviceId && flexLoading} hasDevice={!!deviceId} />
       </div>
 
       {/* Acetone ring — secondary snapshot */}
-      <div className="bg-bg-elevated rounded-3xl p-5 flex flex-col items-center gap-3">
+      <div className="bg-bg-elevated rounded-3xl p-5 flex flex-col items-center gap-3 relative">
+        <div className="absolute top-3 right-3">
+          <InfoButton title="Breath Acetone · สูงสุดวันนี้" ariaLabel="รายละเอียด Breath Acetone">
+            <p>
+              ค่า <b>breath acetone สูงสุด</b> ที่วัดได้ใน <b>วันนี้</b> (00:00 – 23:59 ตาม timezone ที่ตั้ง)
+            </p>
+            <p className="text-text-muted">
+              acetone คือสารระเหยที่ร่างกายผลิตเมื่อเผาไขมัน — ยิ่งสูง ยิ่งอยู่ในสถานะ ketosis
+            </p>
+            <div className="bg-bg-elevated rounded-xl p-3 space-y-2">
+              <p className="text-xs text-text-muted font-semibold uppercase tracking-widest">โซนตามค่า (ppm)</p>
+              <ul className="text-xs space-y-1">
+                <li>• <b>&lt; 2</b> fed_resting — เผาน้ำตาลเป็นหลัก</li>
+                <li>• <b>2–8</b> transitional — เริ่มเปลี่ยนไปเผาไขมัน</li>
+                <li>• <b>8–40</b> fat_oxidation — เผาไขมันหลัก (keto/exercise)</li>
+                <li>• <b>40–75</b> extended_fast — อดอาหารต่อเนื่อง</li>
+                <li>• <b>≥ 75</b> safety_alert — สูงผิดปกติ ให้พบแพทย์</li>
+              </ul>
+            </div>
+            <p className="text-xs text-text-muted">
+              ค่าเปลี่ยนได้ตามอาหาร, การอดอาหาร, การออกกำลังกาย, ความชื้น และอุณหภูมิ
+            </p>
+          </InfoButton>
+        </div>
         <p className="text-xs text-text-muted font-semibold uppercase tracking-widest">
           BREATH ACETONE · สูงสุดวันนี้
         </p>
