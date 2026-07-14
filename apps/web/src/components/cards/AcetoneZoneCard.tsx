@@ -1,12 +1,10 @@
 "use client";
 
-import { useState } from "react";
-import { ChevronRight, X } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ChevronDown, X } from "lucide-react";
 import { convertFromMv } from "@/lib/units";
 
 // ─── Zone data ──────────────────────────────────────────────────────────────
-// 5-zone metabolic ladder. Ranges are inclusive of the low bound and exclusive
-// of the high bound. `details` is the rich content shown when a row is tapped.
 
 type ZoneDetail = {
   heading: string;
@@ -16,27 +14,23 @@ type ZoneDetail = {
 type Zone = {
   n: 1 | 2 | 3 | 4 | 5;
   name: string;
-  range: string;
-  lo: number;   // ppm
-  hi: number;   // ppm (Infinity for the last one)
+  rangeText: string;
+  lo: number;   // ppm — inclusive
+  hi: number;   // ppm — exclusive (Infinity for last)
   desc: string;
-  color: string;      // hex — icon dot + accent
-  accentBg: string;
-  accentBorder: string;
+  color: string;
   details: ZoneDetail[];
 };
 
 const ZONES: Zone[] = [
   {
     n: 1,
-    name: "Rest Zone",
-    range: "0.5 – 2 ppm",
+    name: "Rest zone",
+    rangeText: "0.5–2 ppm",
     lo: 0,
     hi: 2,
     desc: "ร่างกายกำลังใช้พลังงานจากอาหารมื้อล่าสุด",
-    color: "#3B82F6",
-    accentBg: "bg-blue-500/10",
-    accentBorder: "border-blue-500/40",
+    color: "#6C9BFF",
     details: [
       {
         heading: "อะไรกำลังเกิดขึ้นในร่างกาย",
@@ -64,14 +58,12 @@ const ZONES: Zone[] = [
   },
   {
     n: 2,
-    name: "Fat-Burn Zone",
-    range: "2 – 8 ppm",
+    name: "Fat-burn zone",
+    rangeText: "2–8 ppm",
     lo: 2,
     hi: 8,
     desc: "เยี่ยม! ร่างกายเริ่มดึงไขมันสะสมมาใช้เป็นพลังงานแล้ว",
-    color: "#10B981",
-    accentBg: "bg-emerald-500/10",
-    accentBorder: "border-emerald-500/40",
+    color: "#7BC97C",
     details: [
       {
         heading: "อะไรกำลังเกิดขึ้นในร่างกาย",
@@ -83,8 +75,7 @@ const ZONES: Zone[] = [
       {
         heading: "พบเมื่อไหร่",
         body:
-          "4–8 ชั่วโมงหลังมื้ออาหาร ระหว่าง intermittent fasting เบา ๆ หรือหลังออกกำลังกาย " +
-          "ปานกลาง 30 นาที+",
+          "4–8 ชั่วโมงหลังมื้ออาหาร ระหว่าง intermittent fasting เบา ๆ หรือหลังออกกำลังกายปานกลาง 30 นาที+",
       },
       {
         heading: "หมายความว่าอย่างไร",
@@ -102,14 +93,12 @@ const ZONES: Zone[] = [
   },
   {
     n: 3,
-    name: "Deep Burn Zone",
-    range: "8 – 40 ppm",
+    name: "Deep burn zone",
+    rangeText: "8–40 ppm",
     lo: 8,
     hi: 40,
     desc: "ร่างกายอยู่ในโหมดเผาผลาญไขมันเต็มที่",
-    color: "#F59E0B",
-    accentBg: "bg-amber-500/10",
-    accentBorder: "border-amber-500/40",
+    color: "#E0A63C",
     details: [
       {
         heading: "อะไรกำลังเกิดขึ้นในร่างกาย",
@@ -140,14 +129,12 @@ const ZONES: Zone[] = [
   },
   {
     n: 4,
-    name: "Peak Zone",
-    range: "40 – 170 ppm",
+    name: "Peak zone",
+    rangeText: "40–170 ppm",
     lo: 40,
     hi: 170,
     desc: "ร่างกายอยู่ในภาวะเผาผลาญไขมันระดับสูง",
-    color: "#EA580C",
-    accentBg: "bg-orange-500/10",
-    accentBorder: "border-orange-500/40",
+    color: "#E27245",
     details: [
       {
         heading: "อะไรกำลังเกิดขึ้นในร่างกาย",
@@ -178,14 +165,12 @@ const ZONES: Zone[] = [
   },
   {
     n: 5,
-    name: "Caution Zone",
-    range: "มากกว่า 170 ppm",
+    name: "Caution zone",
+    rangeText: "มากกว่า 170 ppm",
     lo: 170,
     hi: Infinity,
     desc: "ค่าที่วัดได้สูงผิดปกติ — ลองสังเกตอาการตัวเองสักหน่อยนะ",
-    color: "#EF4444",
-    accentBg: "bg-red-500/10",
-    accentBorder: "border-red-500/40",
+    color: "#D97B7B",
     details: [
       {
         heading: "อะไรกำลังเกิดขึ้นในร่างกาย",
@@ -218,7 +203,21 @@ const ZONES: Zone[] = [
 ];
 
 function zoneOf(ppm: number): Zone {
-  return ZONES.find((z) => ppm >= z.lo && ppm < z.hi) ?? ZONES[0];
+  return ZONES.find((z) => ppm >= z.lo && ppm < z.hi) ?? ZONES[ZONES.length - 1];
+}
+
+/** Position of the current value on the gradient bar (0..1).
+ *  Each zone occupies 1/N of the bar; within a zone the position is proportional
+ *  to how far the value has advanced from its `lo` to `hi`. Values above the last
+ *  finite `hi` are clamped to the right edge. */
+function markerPosition(ppm: number): number {
+  const n = ZONES.length;
+  const idx = ZONES.findIndex((z) => ppm >= z.lo && ppm < z.hi);
+  if (idx === -1) return 1;
+  const z = ZONES[idx];
+  const span = Number.isFinite(z.hi) ? z.hi - z.lo : Math.max(20, z.lo * 0.2);
+  const frac = Math.min(1, Math.max(0, (ppm - z.lo) / span));
+  return (idx + frac) / n;
 }
 
 // ─── Modal ──────────────────────────────────────────────────────────────────
@@ -231,7 +230,6 @@ function ZoneDetailModal({ zone, onClose }: { zone: Zone; onClose: () => void })
       <div className="relative w-full max-w-md bg-bg-surface rounded-t-3xl sm:rounded-3xl pb-8 px-5 pt-5 max-h-[85vh] flex flex-col">
         <div className="w-10 h-1 bg-border-subtle rounded-full mx-auto mb-4 sm:hidden shrink-0" />
 
-        {/* Header */}
         <div className="flex items-start justify-between mb-4 shrink-0 gap-3">
           <div className="flex items-center gap-3 min-w-0">
             <span
@@ -245,7 +243,7 @@ function ZoneDetailModal({ zone, onClose }: { zone: Zone; onClose: () => void })
               <h2 className="text-lg font-semibold text-text-primary leading-tight truncate">
                 {zone.name}
               </h2>
-              <p className="text-xs text-text-muted mt-0.5 font-mono">{zone.range}</p>
+              <p className="text-xs text-text-muted mt-0.5 font-mono">{zone.rangeText}</p>
             </div>
           </div>
           <button
@@ -257,7 +255,6 @@ function ZoneDetailModal({ zone, onClose }: { zone: Zone; onClose: () => void })
           </button>
         </div>
 
-        {/* Detail sections */}
         <div className="overflow-y-auto flex-1 min-h-0 space-y-4 pr-1">
           {zone.details.map((d) => (
             <div key={d.heading}>
@@ -284,98 +281,125 @@ function ZoneDetailModal({ zone, onClose }: { zone: Zone; onClose: () => void })
 // ─── Card ───────────────────────────────────────────────────────────────────
 
 interface Props {
-  /** Latest acetone value in raw mV (baseline delta). Pass null when no data yet. */
   currentMv: number | null;
-  /** When true, show a "live" pulse dot next to the current value. */
   live?: boolean;
 }
 
 export function AcetoneZoneCard({ currentMv, live = false }: Props) {
   const ppm = currentMv != null ? convertFromMv(currentMv, "ppm") : null;
   const activeZone = ppm != null ? zoneOf(ppm) : null;
-  const [openZone, setOpenZone] = useState<Zone | null>(null);
+  const markerPct = ppm != null ? markerPosition(ppm) * 100 : null;
+
+  // Accordion: one expanded row at a time. Default to the active zone.
+  const [expandedZoneN, setExpandedZoneN] = useState<number | null>(activeZone?.n ?? null);
+  useEffect(() => {
+    // When the active zone shifts (e.g. new reading arrives), auto-expand it.
+    if (activeZone?.n) setExpandedZoneN(activeZone.n);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeZone?.n]);
+
+  const [modalZone, setModalZone] = useState<Zone | null>(null);
+
+  // Rainbow gradient built from zone colors, one stop per zone (5 equal segments).
+  const gradient = `linear-gradient(90deg, ${ZONES.map(
+    (z, i) => `${z.color} ${(i / ZONES.length) * 100}%, ${z.color} ${((i + 1) / ZONES.length) * 100}%`,
+  ).join(", ")})`;
 
   return (
     <>
       <div className="bg-bg-elevated rounded-2xl p-4 space-y-4">
-        <div>
-          <p className="text-xs text-text-muted font-semibold uppercase tracking-widest mb-2">
-            Metabolic Zone · ค่าปัจจุบัน
-          </p>
+        {/* Header: current value + active zone label */}
+        <div className="flex items-baseline justify-between gap-3">
           {ppm != null && activeZone ? (
-            <div className="flex items-baseline gap-2">
-              <span className="text-3xl font-bold" style={{ color: activeZone.color }}>
-                {ppm.toFixed(2)}
-              </span>
-              <span className="text-sm text-text-muted">ppm</span>
-              {live && (
-                <span className="ml-1 inline-flex items-center gap-1 text-[10px] text-mint-500">
-                  <span className="h-1.5 w-1.5 rounded-full bg-mint-500 animate-pulse" />
-                  LIVE
-                </span>
-              )}
-              <span className="ml-auto text-xs font-semibold" style={{ color: activeZone.color }}>
+            <>
+              <div className="flex items-baseline gap-1.5">
+                <span className="text-3xl font-bold text-text-primary">{ppm.toFixed(2)}</span>
+                <span className="text-sm text-text-muted">ppm</span>
+                {live && (
+                  <span className="ml-1 inline-flex items-center gap-1 text-[10px] text-mint-500">
+                    <span className="h-1.5 w-1.5 rounded-full bg-mint-500 animate-pulse" />
+                    LIVE
+                  </span>
+                )}
+              </div>
+              <span className="text-sm font-medium" style={{ color: activeZone.color }}>
                 Zone {activeZone.n} · {activeZone.name}
               </span>
-            </div>
+            </>
           ) : (
-            <div className="flex items-baseline gap-2">
-              <span className="text-3xl font-bold text-text-disabled">—</span>
-              <span className="text-sm text-text-muted">ppm</span>
-              <span className="ml-auto text-xs text-text-muted">ยังไม่มีข้อมูล</span>
-            </div>
+            <>
+              <div className="flex items-baseline gap-1.5">
+                <span className="text-3xl font-bold text-text-disabled">—</span>
+                <span className="text-sm text-text-muted">ppm</span>
+              </div>
+              <span className="text-xs text-text-muted">ยังไม่มีข้อมูล</span>
+            </>
           )}
         </div>
 
-        <div className="space-y-1.5">
+        {/* Gradient bar with marker */}
+        <div className="relative h-2.5 rounded-full overflow-visible" style={{ background: gradient }}>
+          {markerPct != null && (
+            <div
+              className="absolute -top-1 h-4.5 w-4.5 rounded-full bg-bg-elevated border-2 border-text-primary shadow-md pointer-events-none"
+              style={{ left: `calc(${markerPct}% - 9px)`, height: "1.125rem", width: "1.125rem" }}
+              aria-hidden="true"
+            />
+          )}
+        </div>
+
+        {/* Zone rows — single-line, accordion expand */}
+        <div className="divide-y divide-border-subtle">
           {ZONES.map((z) => {
+            const isExpanded = expandedZoneN === z.n;
             const isActive = activeZone?.n === z.n;
             return (
-              <button
-                key={z.n}
-                type="button"
-                onClick={() => setOpenZone(z)}
-                aria-label={`ดูรายละเอียด Zone ${z.n} ${z.name}`}
-                className={`w-full text-left rounded-xl p-3 border transition-colors group ${
-                  isActive
-                    ? `${z.accentBg} ${z.accentBorder}`
-                    : "bg-bg-raised border-transparent hover:border-border-strong"
-                }`}
-              >
-                <div className="flex items-center gap-2.5">
+              <div key={z.n}>
+                <button
+                  type="button"
+                  onClick={() => setExpandedZoneN(isExpanded ? null : z.n)}
+                  aria-expanded={isExpanded}
+                  className="w-full flex items-center gap-2.5 py-3 text-left hover:bg-bg-raised/40 rounded-lg px-1 -mx-1 transition-colors"
+                >
                   <span
-                    className="h-3 w-3 rounded-full shrink-0"
+                    className="h-2.5 w-2.5 rounded-full shrink-0"
                     style={{
                       background: z.color,
-                      boxShadow: isActive ? `0 0 0 3px ${z.color}22` : "none",
+                      boxShadow: isActive ? `0 0 0 3px ${z.color}33` : "none",
                     }}
                   />
-                  <p className={`text-sm font-semibold ${isActive ? "text-text-primary" : "text-text-primary/80"}`}>
-                    Zone {z.n}: {z.name}
-                  </p>
-                  <span className="ml-auto flex items-center gap-1 text-[11px] text-text-muted font-mono">
-                    {z.range}
-                    <ChevronRight size={12} className="text-text-disabled transition-transform group-hover:translate-x-0.5" />
-                  </span>
-                </div>
-                <div className="flex items-start justify-between gap-2 mt-1 pl-5">
-                  <p className={`text-xs leading-relaxed ${isActive ? "text-text-primary" : "text-text-muted"}`}>
-                    {z.desc}
-                  </p>
-                  <span
-                    className="text-[10px] font-medium shrink-0 whitespace-nowrap opacity-70 group-hover:opacity-100 transition-opacity"
-                    style={{ color: z.color }}
+                  <p
+                    className={`text-sm ${isActive ? "font-semibold text-text-primary" : "font-medium text-text-primary/90"}`}
                   >
-                    อ่านเพิ่ม →
-                  </span>
-                </div>
-              </button>
+                    {z.name}
+                  </p>
+                  <span className="ml-auto text-xs text-text-muted font-mono">{z.rangeText}</span>
+                  <ChevronDown
+                    size={16}
+                    className={`text-text-muted transition-transform ${isExpanded ? "rotate-180" : ""}`}
+                  />
+                </button>
+
+                {isExpanded && (
+                  <div className="pb-3 pl-5 pr-1 space-y-2">
+                    <p className="text-xs text-text-muted leading-relaxed">{z.desc}</p>
+                    <button
+                      type="button"
+                      onClick={() => setModalZone(z)}
+                      className="text-xs font-semibold underline underline-offset-2 hover:opacity-80 transition-opacity"
+                      style={{ color: z.color }}
+                    >
+                      ดูรายละเอียด →
+                    </button>
+                  </div>
+                )}
+              </div>
             );
           })}
         </div>
       </div>
 
-      {openZone && <ZoneDetailModal zone={openZone} onClose={() => setOpenZone(null)} />}
+      {modalZone && <ZoneDetailModal zone={modalZone} onClose={() => setModalZone(null)} />}
     </>
   );
 }
