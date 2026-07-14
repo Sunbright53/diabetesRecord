@@ -6,6 +6,7 @@ import { useTheme } from "next-themes";
 import { AuthProvider } from "@/lib/auth";
 import { LocaleProvider } from "@/lib/i18n";
 import { UnitsProvider } from "@/lib/units";
+import { TimezoneProvider } from "@/lib/timezone";
 import { Toaster } from "@/components/ui/toaster";
 import { ThemeProvider } from "@/components/theme/ThemeProvider";
 import { Toaster as Sonner } from "sonner";
@@ -43,11 +44,13 @@ export function Providers({ children }: { children: React.ReactNode }) {
       <QueryClientProvider client={queryClient}>
         <LocaleProvider>
           <UnitsProvider>
-            <AuthProvider>
-              {children}
-              <Toaster />
-              <ThemedSonner />
-            </AuthProvider>
+            <TimezoneProvider>
+              <AuthProvider>
+                {children}
+                <Toaster />
+                <ThemedSonner />
+              </AuthProvider>
+            </TimezoneProvider>
           </UnitsProvider>
         </LocaleProvider>
       </QueryClientProvider>

@@ -18,6 +18,8 @@ import { useAuth } from "@/lib/auth";
 import { useT } from "@/lib/i18n";
 import { useDeviceStream } from "@/lib/useDeviceStream";
 import { convertFromMv, useUnits } from "@/lib/units";
+import { useTimezone } from "@/lib/timezone";
+import { parseServerTime } from "@/lib/time";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Wind } from "lucide-react";
@@ -64,6 +66,7 @@ export default function TrendsPage() {
   const highThreshold     = convertFromMv(80, acUnit);
 
   const acDecimals = acUnit === "mV" ? 0 : 2;
+  const { formatDate: tzFormatDate, formatTime: tzFormatTime } = useTimezone();
   const [days, setDays] = useState(7);
   const [selectedDevice, setSelectedDevice] = useState<string | null>(null);
   useDeviceStream(user?.id);
@@ -95,8 +98,7 @@ export default function TrendsPage() {
   ];
 
   const dateLocale = locale === "th" ? "th-TH" : "en-US";
-  const fmt = (ts: string) =>
-    new Date(ts).toLocaleDateString(dateLocale, { day: "numeric", month: "short" });
+  const fmt = (ts: string) => tzFormatDate(ts);
 
   const { data: ketone, isLoading: kLoading } = useQuery({
     queryKey: ["ketone", days],
@@ -469,7 +471,6 @@ export default function TrendsPage() {
                   {sessions!.map((s) => {
                     const zone = s.dominant_label ?? "unreliable";
                     const zoneColor = ACETONE_ZONE_COLOR[zone] ?? "#9CA3AF";
-                    const started = new Date(s.started_at);
                     return (
                       <tr
                         key={s.session_id}
@@ -482,17 +483,9 @@ export default function TrendsPage() {
                               style={{ background: zoneColor }}
                             />
                             <div className="leading-tight">
-                              <div>
-                                {started.toLocaleDateString(dateLocale, {
-                                  day: "numeric",
-                                  month: "short",
-                                })}
-                              </div>
+                              <div>{tzFormatDate(s.started_at)}</div>
                               <div className="text-[10px] text-muted">
-                                {started.toLocaleTimeString(dateLocale, {
-                                  hour: "2-digit",
-                                  minute: "2-digit",
-                                })}
+                                {tzFormatTime(s.started_at)}
                               </div>
                             </div>
                           </div>

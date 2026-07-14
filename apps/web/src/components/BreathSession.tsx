@@ -10,6 +10,7 @@ import { api } from "@/lib/api";
 import type { ContextTag } from "@/lib/api";
 import { useUnits } from "@/lib/units";
 import { LABEL_STYLE, LABEL_TH, backendLabelToZone } from "@/lib/riskLabel";
+import { useTimezone } from "@/lib/timezone";
 import { ContextSelector } from "./ContextSelector";
 import { PreBlowChecklist, type PreBlowAnswers } from "./PreBlowChecklist";
 
@@ -561,6 +562,7 @@ function DoneCard({
 /* ── Recent sessions list (reads from localStorage) ── */
 export function RecentBreathSessions({ sessions }: { sessions: SessionSummary[] }) {
   const { format: fmt, label: unitLbl } = useUnits();
+  const { formatDate: tzFormatDate, formatTime: tzFormatTime } = useTimezone();
   return (
     <div>
       <p className="text-xs text-text-muted font-semibold uppercase tracking-widest mb-3">
@@ -580,12 +582,8 @@ export function RecentBreathSessions({ sessions }: { sessions: SessionSummary[] 
             return (
               <div key={s.id} className="bg-bg-elevated rounded-2xl p-4 flex items-center gap-3">
                 <div className="w-14 text-right">
-                  <p className="text-xs text-text-muted">
-                    {new Date(s.at).toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" })}
-                  </p>
-                  <p className="text-[10px] text-text-disabled mt-0.5">
-                    {new Date(s.at).toLocaleDateString("th-TH", { month: "short", day: "numeric" })}
-                  </p>
+                  <p className="text-xs text-text-muted">{tzFormatTime(s.at)}</p>
+                  <p className="text-[10px] text-text-disabled mt-0.5">{tzFormatDate(s.at)}</p>
                 </div>
                 <div className="flex-1">
                   <p className="text-sm font-semibold text-text-primary">
