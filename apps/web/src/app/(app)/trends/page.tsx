@@ -108,11 +108,21 @@ export default function TrendsPage() {
     queryFn:  () => api.logs.getWeight({ days }),
   });
 
+  // Fallback: if user has no owned device and no active shared claim, look up their
+  // most recent session's device_id — backend now allows user-scoped history queries
+  // on any device the user has ever recorded on.
+  const { data: recentSessions } = useQuery({
+    queryKey: ["sensor", "sessions", "fallback"],
+    queryFn: () => api.sensor.getSessions(30),
+  });
+  const lastRecordedDeviceId = recentSessions?.[0]?.device_id ?? null;
+
   const effectiveDevice =
     selectedDevice
     ?? devices?.find((d) => d.active)?.id
     ?? devices?.[0]?.id
     ?? claimedSharedId
+    ?? lastRecordedDeviceId
     ?? null;
 
   const { data: sensorReadings, isLoading: sLoading } = useQuery({

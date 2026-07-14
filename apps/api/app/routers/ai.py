@@ -164,16 +164,16 @@ async def get_trend(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    device_result = await db.exec(
-        select(Device).where(Device.id == device_id, Device.user_id == user.id)
-    )
-    if not device_result.first():
-        raise HTTPException(status_code=404, detail="Device not found")
-
+    # History is user-scoped: filter by user_id so users can see their own trend
+    # even from shared devices they no longer hold an active claim on.
     since = datetime.utcnow() - timedelta(days=days)
     readings_result = await db.exec(
         select(SensorReading)
-        .where(SensorReading.device_id == device_id, SensorReading.time >= since)
+        .where(
+            SensorReading.device_id == device_id,
+            SensorReading.user_id == user.id,
+            SensorReading.time >= since,
+        )
         .order_by(SensorReading.time)
     )
     readings = readings_result.all()

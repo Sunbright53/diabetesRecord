@@ -406,9 +406,8 @@ async def get_readings(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    if not await _get_accessible_device(device_id, user, db):
-        raise HTTPException(status_code=404, detail="Device not found")
-
+    # History is user-scoped: the WHERE clause already filters SensorReading.user_id == user.id,
+    # so users can see their own past readings even after releasing a shared device claim.
     since = datetime.utcnow() - timedelta(days=days)
     if limit > 0:
         # Fetch newest N, then flip to ascending so callers still get chronological order.
@@ -440,6 +439,7 @@ async def get_readings(
 
 class SessionSummary(BaseModel):
     session_id: str
+    device_id: str
     started_at: datetime
     ended_at: datetime
     duration_seconds: float
@@ -464,6 +464,7 @@ async def list_sessions(
     rows = (await db.exec(
         select(
             SensorReading.session_id.label("sid"),
+            func.max(SensorReading.device_id).label("device"),  # readings in one session share device
             func.min(SensorReading.time).label("started"),
             func.max(SensorReading.time).label("ended"),
             func.count().label("n"),
@@ -507,15 +508,16 @@ async def list_sessions(
     return [
         SessionSummary(
             session_id=r[0],
-            started_at=r[1],
-            ended_at=r[2],
-            duration_seconds=(r[2] - r[1]).total_seconds(),
-            n_samples=int(r[3]),
-            peak_acetone_delta=float(r[4]) if r[4] is not None else None,
-            mean_acetone_delta=float(r[5]) if r[5] is not None else None,
-            avg_pressure_kpa=float(r[6]) if r[6] is not None else None,
-            avg_temp_c=float(r[7]) if r[7] is not None else None,
-            avg_humidity_pct=float(r[8]) if r[8] is not None else None,
+            device_id=str(r[1]),
+            started_at=r[2],
+            ended_at=r[3],
+            duration_seconds=(r[3] - r[2]).total_seconds(),
+            n_samples=int(r[4]),
+            peak_acetone_delta=float(r[5]) if r[5] is not None else None,
+            mean_acetone_delta=float(r[6]) if r[6] is not None else None,
+            avg_pressure_kpa=float(r[7]) if r[7] is not None else None,
+            avg_temp_c=float(r[8]) if r[8] is not None else None,
+            avg_humidity_pct=float(r[9]) if r[9] is not None else None,
             dominant_label=dominant.get(r[0], (None,))[0],
         )
         for r in rows
@@ -544,11 +546,9 @@ async def get_daily_stats(
 ):
     """
     Per-day aggregate for the CURRENT user's readings on this device.
-    Shared-device semantics: each user sees their own recordings only.
+    Shared-device semantics: each user sees their own recordings only —
+    the WHERE clause filters user_id, so no cross-user leak even without an active claim.
     """
-    if not await _get_accessible_device(device_id, user, db):
-        raise HTTPException(status_code=404, detail="Device not found")
-
     since = datetime.utcnow() - timedelta(days=days)
     day = func.date(SensorReading.time).label("day")
 

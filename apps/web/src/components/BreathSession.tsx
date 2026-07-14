@@ -11,12 +11,16 @@ import type { ContextTag } from "@/lib/api";
 import { useUnits } from "@/lib/units";
 import { LABEL_STYLE, LABEL_TH, backendLabelToZone } from "@/lib/riskLabel";
 import { ContextSelector } from "./ContextSelector";
+import { PreBlowChecklist, type PreBlowAnswers } from "./PreBlowChecklist";
 
-const CALIBRATION_MS = 10_000;
-const RECORDING_MS   = 10_000;
-const STORAGE_KEY    = "breath-sessions";
-const MAX_STORED     = 20;
-const MIN_SAMPLES    = 2;
+const CALIBRATION_MS = 5_000;
+const RECORDING_MS   = 5_000;
+const MAX_STORED  = 20;
+const MIN_SAMPLES = 2;
+
+function storageKey(userId?: string | null) {
+  return userId ? `breath-sessions-${userId}` : "breath-sessions";
+}
 
 export interface SessionSummary {
   id: string;
@@ -30,14 +34,15 @@ export interface SessionSummary {
   context_tag: ContextTag | null;
 }
 
-export function loadSessions(): SessionSummary[] {
+export function loadSessions(userId?: string | null): SessionSummary[] {
   if (typeof window === "undefined") return [];
-  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "[]"); }
+  try { return JSON.parse(localStorage.getItem(storageKey(userId)) ?? "[]"); }
   catch { return []; }
 }
 
-function persist(s: SessionSummary) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify([s, ...loadSessions()].slice(0, MAX_STORED)));
+function persist(s: SessionSummary, userId?: string | null) {
+  const key = storageKey(userId);
+  localStorage.setItem(key, JSON.stringify([s, ...loadSessions(userId)].slice(0, MAX_STORED)));
 }
 
 function trimmedMean(vals: number[]): number {
@@ -105,10 +110,11 @@ interface Props {
   liveReading: LiveReading | null;
   connected: boolean;
   deviceId: string | null;
+  userId?: string | null;
   onSessionSaved?: () => void;
 }
 
-export default function BreathSession({ liveReading, connected, deviceId, onSessionSaved }: Props) {
+export default function BreathSession({ liveReading, connected, deviceId, userId, onSessionSaved }: Props) {
   const { format: fmtAcetone, label: unitLbl } = useUnits();
   const qc = useQueryClient();
   const [phase, setPhase] = useState<Phase>("idle");
@@ -117,6 +123,8 @@ export default function BreathSession({ liveReading, connected, deviceId, onSess
   const [chartData, setChartData] = useState<{ t: number; mv: number }[]>([]);
   const [showContextSelector, setShowContextSelector] = useState(false);
   const [contextTag, setContextTag] = useState<ContextTag | null>(null);
+  const [showChecklist, setShowChecklist] = useState(false);
+  const preBlowAnswersRef = useRef<PreBlowAnswers | null>(null);
 
   const t0 = useRef(0);
   const samplesRef = useRef<LiveReading[]>([]);
@@ -238,7 +246,7 @@ export default function BreathSession({ liveReading, connected, deviceId, onSess
       label: modeLabel(s),
       context_tag: contextTag,
     };
-    persist(summary);
+    persist(summary, userId);
     setResult(summary);
     setPhase("done");
     toast.success("บันทึกเซสชั่นแล้ว");
@@ -261,6 +269,20 @@ export default function BreathSession({ liveReading, connected, deviceId, onSess
       return;
     }
     primeAudio();  // must run on user gesture (iOS Safari)
+    setShowChecklist(true);
+  }
+
+  function handleChecklistFinish(answers: PreBlowAnswers | null) {
+    preBlowAnswersRef.current = answers;
+    setShowChecklist(false);
+    if (answers && userId) {
+      try {
+        localStorage.setItem(
+          `preblow-answers-${userId}`,
+          JSON.stringify({ at: new Date().toISOString(), answers }),
+        );
+      } catch { /* storage full — ignore */ }
+    }
     setShowContextSelector(true);
   }
 
@@ -322,6 +344,12 @@ export default function BreathSession({ liveReading, connected, deviceId, onSess
             {connected ? "กดเพื่อเริ่มการตรวจ" : "เชื่อมต่ออุปกรณ์ก่อนเริ่ม"}
           </p>
         </div>
+        {showChecklist && (
+          <PreBlowChecklist
+            onFinish={handleChecklistFinish}
+            onClose={() => setShowChecklist(false)}
+          />
+        )}
         {showContextSelector && (
           <ContextSelector
             onSelect={(tag) => beginCalibration(tag)}

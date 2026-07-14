@@ -410,6 +410,7 @@ export interface DailyStat {
 
 export interface SessionSummaryOut {
   session_id: string;            // e.g. "sunbright1"
+  device_id: string;
   started_at: string;
   ended_at: string;
   duration_seconds: number;
@@ -752,6 +753,16 @@ export const api = {
       request<AdminUserOut[]>("/admin/users"),
     ensureManualDevice: (userId: string) =>
       request<AdminDeviceOut>(`/admin/device/ensure/${userId}`, { method: "POST" }),
+    registerMacDevice: (mac: string, userEmail: string) =>
+      request<AdminDeviceOut>("/admin/device/mac", {
+        method: "POST",
+        body: JSON.stringify({ mac, user_email: userEmail }),
+      }),
+    assignDevice: (deviceId: string, userId: string) =>
+      request<AdminDeviceOut>(`/admin/device/${deviceId}/assign`, {
+        method: "POST",
+        body: JSON.stringify({ user_id: userId }),
+      }),
     submitReading: (data: AdminReadingCreate) =>
       request<AdminReadingOut>("/admin/reading", {
         method: "POST",

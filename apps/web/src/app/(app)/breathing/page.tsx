@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { api, type SharedDeviceOut } from "@/lib/api";
+import { api, type SharedDeviceOut, type SessionSummaryOut } from "@/lib/api";
 import { parseServerTime } from "@/lib/time";
 import { useAuth } from "@/lib/auth";
 import { useDeviceStream } from "@/lib/useDeviceStream";
@@ -10,17 +10,53 @@ import Link from "next/link";
 import { Settings, Radio, TrendingUp, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import { useT } from "@/lib/i18n";
+import type { AcetoneLabel } from "@/lib/useDeviceStream";
 import BreathSession, {
   RecentBreathSessions,
   loadSessions,
   type SessionSummary,
 } from "@/components/BreathSession";
 
+function serverSessionsToSummaries(rows: SessionSummaryOut[] | undefined): SessionSummary[] {
+  if (!rows) return [];
+  return rows.map((r) => ({
+    id: r.session_id,
+    at: r.started_at,
+    n_samples: r.n_samples,
+    peak_mv: r.peak_acetone_delta ?? 0,
+    mean_mv: r.mean_acetone_delta ?? 0,
+    pressure_mean_kpa: r.avg_pressure_kpa,
+    quality_score: null,
+    label: (r.dominant_label as AcetoneLabel | null) ?? null,
+    context_tag: null,
+  }));
+}
+
+function mergeSessions(server: SessionSummary[], local: SessionSummary[]): SessionSummary[] {
+  const byId = new Map<string, SessionSummary>();
+  for (const s of server) byId.set(s.id, s);
+  for (const s of local) if (!byId.has(s.id)) byId.set(s.id, s);
+  return [...byId.values()].sort((a, b) => +new Date(b.at) - +new Date(a.at));
+}
+
 export default function BreathingPage() {
   const { user } = useAuth();
   const { t } = useT();
   const { reading: liveReading } = useDeviceStream(user?.id);
-  const [sessions, setSessions] = useState<SessionSummary[]>(() => loadSessions());
+  const userId = user?.id;
+  const [localSessions, setLocalSessions] = useState<SessionSummary[]>(() => loadSessions(userId));
+
+  const { data: serverSessionsRaw, refetch: refetchSessions } = useQuery({
+    queryKey: ["sensor", "sessions", userId],
+    queryFn: () => api.sensor.getSessions(30),
+    enabled: !!userId,
+    refetchInterval: 30_000,
+  });
+
+  const sessions = useMemo(
+    () => mergeSessions(serverSessionsToSummaries(serverSessionsRaw), localSessions),
+    [serverSessionsRaw, localSessions],
+  );
 
   const { data: devices } = useQuery({
     queryKey: ["sensor", "devices"],
@@ -126,7 +162,8 @@ export default function BreathingPage() {
         liveReading={liveReading}
         connected={connected}
         deviceId={primaryDevice?.id ?? null}
-        onSessionSaved={() => setSessions(loadSessions())}
+        userId={userId}
+        onSessionSaved={() => { setLocalSessions(loadSessions(userId)); refetchSessions(); }}
       />
 
       {/* Trends shortcut */}
