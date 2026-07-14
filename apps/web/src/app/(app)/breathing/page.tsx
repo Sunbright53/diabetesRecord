@@ -11,20 +11,25 @@ import { Radio, TrendingUp, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import { useT } from "@/lib/i18n";
 import BreathSession from "@/components/BreathSession";
+import { AcetoneZoneCard } from "@/components/cards/AcetoneZoneCard";
 
 export default function BreathingPage() {
   const { user } = useAuth();
   const { t } = useT();
   const { reading: liveReading } = useDeviceStream(user?.id);
   const userId = user?.id;
-  // Kick a background refetch of the /sensor/sessions cache after each blow, so
-  // /trends shows the new session immediately. History display itself has moved to /trends.
-  const { refetch: refetchSessions } = useQuery({
+  // Session history has moved to /trends. We still fetch it here so (a) after each
+  // blow we can invalidate the cache for /trends, and (b) the AcetoneZoneCard can
+  // show the peak of the most recent session as the "current" value.
+  const { data: sessionsData, refetch: refetchSessions } = useQuery({
     queryKey: ["sensor", "sessions", userId],
     queryFn: () => api.sensor.getSessions(30),
     enabled: !!userId,
     refetchInterval: 30_000,
   });
+  const lastSessionPeakMv = sessionsData?.[0]?.peak_acetone_delta ?? null;
+  // Prefer live reading while a recording is streaming; fall back to last session peak.
+  const currentAcetoneMv = liveReading?.acetone_delta_mv ?? lastSessionPeakMv;
 
   const { data: devices } = useQuery({
     queryKey: ["sensor", "devices"],
@@ -95,6 +100,9 @@ export default function BreathingPage() {
         userId={userId}
         onSessionSaved={() => refetchSessions()}
       />
+
+      {/* Metabolic zone — where does the current value sit on the 5-zone ladder */}
+      <AcetoneZoneCard currentMv={currentAcetoneMv} live={!!liveReading && connected} />
 
       {/* Trends shortcut */}
       {primaryDevice && (
