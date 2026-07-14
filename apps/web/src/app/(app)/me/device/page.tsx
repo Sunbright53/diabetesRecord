@@ -9,8 +9,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { toast } from "sonner";
 import {
-  FlaskConical,
-  Bell, Database, Wrench, Settings, Shield, ChevronRight, Plus, Download,
+  Bell, Settings, Shield, ChevronRight, Plus,
   RefreshCw,
 } from "lucide-react";
 
@@ -145,21 +144,48 @@ export default function DevicePage() {
   }
 
   const basicMenuItems: MenuItem[] = [
-    { icon: FlaskConical, label: "Calibration & reports",  href: (id: string) => `/me/device/${id}/report` },
-    { icon: Bell,         label: "Notifications & alerts", href: "#", disabled: true },
-    { icon: Database,     label: "Sensor data & history",  href: "#", disabled: true },
+    { icon: Bell, label: "Notifications & alerts", href: "#", disabled: true },
   ];
 
   const advancedMenuItems: MenuItem[] = [
-    { icon: Download,  label: "Download firmware (.ino)", href: (id: string) => `/me/device/${id}/firmware` },
-    { icon: Wrench,    label: "Sensor settings",          href: "#", disabled: true },
-    { icon: Shield,    label: "Data privacy",             href: "#", disabled: true },
-    { icon: Settings,  label: "Advanced settings",        href: "#", disabled: true },
-    { icon: RefreshCw, label: "Reset device WiFi",        onClick: () => setResetOpen(true), danger: true },
+    { icon: Shield,    label: "Data privacy",      href: "#", disabled: true },
+    { icon: Settings,  label: "Advanced settings", href: "#", disabled: true },
+    { icon: RefreshCw, label: "Reset device WiFi", onClick: () => setResetOpen(true), danger: true },
   ];
 
   return (
     <div className="max-w-md mx-auto px-4 pt-5 pb-24 space-y-5">
+      {/* Compact status row — shows for any active device, with a quick release
+          button for shared claims. Placed above the hero for quick access. */}
+      {device && (
+        <div className="bg-bg-elevated rounded-2xl p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-semibold text-text-primary">
+                {device.sensor_model ?? "MetaBreath TGS1820"}
+                {myClaim && !ownedDevice && (
+                  <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded-full bg-mint-500/20 text-mint-500 font-medium align-middle">
+                    shared
+                  </span>
+                )}
+              </p>
+              <div className="flex items-center gap-1.5 mt-1">
+                <div className={`h-2 w-2 rounded-full ${status.dot}`} />
+                <p className={`text-xs ${status.color}`}>{isLive ? "Connected · Live" : "Disconnected"}</p>
+              </div>
+            </div>
+            {!ownedDevice && myClaim && (
+              <button
+                onClick={() => handleRelease(myClaim.id)}
+                className="text-xs text-text-muted hover:text-text-primary px-2 py-1 rounded-lg bg-bg-raised"
+              >
+                ปล่อย
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Device hero card */}
       <div className="bg-bg-elevated rounded-3xl overflow-hidden">
         <div className="h-40 bg-gradient-to-br from-mint-500/10 to-blue-500/10 flex items-center justify-center">
@@ -248,15 +274,7 @@ export default function DevicePage() {
         </div>
       </div>
 
-      {/* If viewing a claimed shared device, offer to release it */}
-      {!ownedDevice && myClaim && (
-        <button
-          onClick={() => handleRelease(myClaim.id)}
-          className="w-full bg-bg-elevated text-text-muted rounded-2xl py-3 text-sm hover:bg-bg-raised transition-colors"
-        >
-          ปล่อยเครื่อง (สำหรับให้คนอื่นใช้)
-        </button>
-      )}
+      {/* Release action moved to the compact status row at the top of the page. */}
 
       {/* Shared device pool — visible when the user doesn't own any device */}
       {!ownedDevice && claimableDevices.length > 0 && (
