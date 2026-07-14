@@ -45,13 +45,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
               Meta
             </span>
             <span
-              className="font-display text-[3rem] font-bold tracking-[0.12em] leading-none uppercase"
-              style={{
-                backgroundImage: "linear-gradient(to right, #3CC9A0 30%, rgba(60,201,160,0.08))",
-                WebkitBackgroundClip: "text",
-                WebkitTextFillColor: "transparent",
-                backgroundClip: "text",
-              }}
+              className="font-display text-[3rem] font-bold tracking-[0.12em] leading-none uppercase text-mint-500"
             >
               Breath
             </span>
