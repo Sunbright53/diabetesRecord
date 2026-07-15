@@ -177,10 +177,14 @@ export default function RegisterPage() {
                     aria-pressed={active}
                     onClick={() => toggleGoal(value)}
                     className={twMerge(
-                      "rounded-xl border text-left transition-all overflow-hidden",
+                      // Use inset box-shadow instead of border+ring so the accent
+                      // stroke sits ON TOP of the image without creating a visible
+                      // gap between the border and the illustration (the effect
+                      // that made the "Health monitoring" card look framed).
+                      "rounded-xl text-left transition-all overflow-hidden",
                       active
-                        ? "border-mint-500 ring-2 ring-mint-500/20"
-                        : "border-border-soft hover:border-mint-300/70"
+                        ? "shadow-[inset_0_0_0_2px_#01D19B]"
+                        : "shadow-[inset_0_0_0_1px_var(--color-border-soft)] hover:shadow-[inset_0_0_0_1px_#7BC97C]",
                     )}
                   >
                     {/* Illustration header */}
@@ -188,12 +192,12 @@ export default function RegisterPage() {
                       <img
                         src={img}
                         alt={label}
-                        className="w-full object-cover"
-                        style={{ height: 72 }}
+                        className="w-full object-cover block"
+                        style={{ height: 72, objectPosition: "center" }}
                         draggable={false}
                       />
                       {active && (
-                        <div className="absolute inset-0 bg-mint-500/12" />
+                        <div className="absolute inset-0 bg-mint-500/12 pointer-events-none" />
                       )}
                     </div>
                     {/* Text */}
