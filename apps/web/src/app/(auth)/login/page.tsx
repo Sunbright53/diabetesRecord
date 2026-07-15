@@ -45,7 +45,7 @@ export default function LoginPage() {
     <Card>
       <CardContent className="pt-6">
         <div className="flex flex-wrap justify-between items-start gap-4 mb-1">
-          <h2 className="text-xl font-semibold text-gray-900 tracking-tight">{t("auth.loginTitle")}</h2>
+          <h2 className="text-xl font-semibold text-text-primary tracking-tight">{t("auth.loginTitle")}</h2>
           <LangSwitcher variant="card" />
         </div>
         <p className="text-sm text-muted mb-6">{t("auth.loginWelcome")}</p>

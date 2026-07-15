@@ -118,7 +118,7 @@ export default function RegisterPage() {
     <Card>
       <CardContent className="pt-6">
         <div className="flex flex-wrap justify-between items-start gap-4 mb-6">
-          <h2 className="text-xl font-semibold text-gray-900 tracking-tight">{t("auth.registerTitle")}</h2>
+          <h2 className="text-xl font-semibold text-text-primary tracking-tight">{t("auth.registerTitle")}</h2>
           <LangSwitcher variant="card" />
         </div>
 
@@ -164,7 +164,7 @@ export default function RegisterPage() {
 
           {/* Goal selector */}
           <div className="space-y-2">
-            <p className="text-sm font-medium text-gray-900/80">{t("auth.goalPrompt")}</p>
+            <p className="text-sm font-medium text-text-primary">{t("auth.goalPrompt")}</p>
             <div className="grid grid-cols-2 gap-2" role="group" aria-label={t("auth.goalPrompt")}>
               {GOALS.map(({ value, img }) => {
                 const label = t(`goal.${value}`);
