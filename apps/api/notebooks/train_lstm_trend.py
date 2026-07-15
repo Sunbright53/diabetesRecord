@@ -181,6 +181,12 @@ def eval_epoch(model, loader, loss_fn, device) -> tuple[float, np.ndarray, np.nd
 
 
 def main() -> None:
+    # TRAINING-DATA POLICY (see app/services/ml_data.py):
+    #   Reads from a curated CSV, not production DB. If migrated to DB later,
+    #   MUST use app.services.ml_data.get_training_readings() which enforces:
+    #     users.exclude_from_training = FALSE   (excludes sunbright, admin/demo)
+    #     session_id NOT LIKE '%-sim-%' / '%-pilot-%' / 'demo-%'
+    #     raw->>'source' NOT matching simulated_/excel_pilot_import/demo_/synthetic_
     print(f"Loading: {DATA_PATH.relative_to(ROOT)}")
     df = pd.read_csv(DATA_PATH)
     print(f"  rows={len(df):,}  patients={df['patient_id'].nunique()}")

@@ -118,6 +118,17 @@ def anderson_label(ppm: float) -> str:
 
 
 # ─── Load data ────────────────────────────────────────────────────────────────
+# TRAINING-DATA POLICY (see app/services/ml_data.py):
+#   This script reads from a curated CSV (data/processed/*.csv) — it does NOT
+#   pull directly from production sensor_readings. When a future refactor moves
+#   this loader to the DB, it MUST route through:
+#       from app.services.ml_data import get_training_readings
+#   which enforces:
+#     - users.exclude_from_training = FALSE
+#     - session_id NOT LIKE '%-sim-%' / '%-pilot-%' / 'demo-%'
+#     - raw->>'source' NOT matching simulated_ / excel_pilot_import / demo_ / synthetic_
+#   The sunbright admin account and any imported/simulated rows are excluded
+#   by design so their data never influences training.
 print(f"Loading dataset: {DATASET}")
 df = pd.read_csv(DATASET, encoding="utf-8-sig")
 print(f"  Rows total: {len(df)} | Original labels: {df['label'].value_counts().to_dict()}")
