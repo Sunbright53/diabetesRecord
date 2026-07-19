@@ -471,6 +471,25 @@ export interface ChatResponse {
   disclaimer_appended: boolean;
 }
 
+export interface PromptInfo {
+  name: string;
+  title: string | null;
+  description: string | null;
+  text: string;
+}
+
+export interface PromptsResponse {
+  prompts: PromptInfo[];
+}
+
+export type ChatStreamEvent =
+  | { type: "text"; delta: string }
+  | { type: "tool_use"; name: string }
+  | { type: "tool_result"; name: string }
+  | { type: "refusal"; reply: string }
+  | { type: "error"; message: string }
+  | { type: "done" };
+
 export type TrendClass = "stable" | "increasing" | "decreasing" | "abnormal";
 
 export interface TrendClassifyResponse {
@@ -724,6 +743,48 @@ export const api = {
         method: "POST",
         body: JSON.stringify({ message, device_id: deviceId }),
       }),
+    listPrompts: () =>
+      request<PromptsResponse>("/ai/prompts"),
+    chatStream: async (
+      message: string,
+      deviceId: string | undefined,
+      onEvent: (ev: ChatStreamEvent) => void,
+    ): Promise<void> => {
+      const token = getToken();
+      const res = await fetch(`${API_BASE}/ai/chat/stream`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ message, device_id: deviceId }),
+      });
+      if (!res.ok || !res.body) throw new Error("stream failed");
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = "";
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        // Split by SSE double-newline delimiter
+        let idx;
+        while ((idx = buf.indexOf("\n\n")) !== -1) {
+          const frame = buf.slice(0, idx);
+          buf = buf.slice(idx + 2);
+          for (const line of frame.split("\n")) {
+            if (!line.startsWith("data:")) continue;
+            const payload = line.slice(5).trim();
+            if (!payload) continue;
+            try {
+              onEvent(JSON.parse(payload) as ChatStreamEvent);
+            } catch {
+              /* skip malformed frame */
+            }
+          }
+        }
+      }
+    },
     getFlexibility: (deviceId: string, contextTag?: string, days = 14) =>
       request<FlexibilityResponse>("/ai/flexibility", {
         method: "POST",
