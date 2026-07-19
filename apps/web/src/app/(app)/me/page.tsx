@@ -132,53 +132,57 @@ export default function MePage() {
       )}
 
       {/* Menu */}
-      <div className="bg-bg-elevated rounded-2xl overflow-hidden">
-        {/* Admin Console — only for admin users */}
-        {user?.is_admin && (
-          <Link href="/admin" className="flex items-center gap-3 px-4 py-3.5 border-b border-border-soft hover:bg-bg-raised transition-colors">
-            <div className="h-8 w-8 rounded-lg bg-gold-500/20 flex items-center justify-center">
-              <Shield size={15} className="text-gold-500" />
+      <div>
+        <p className="text-xs text-text-muted font-semibold uppercase tracking-widest mb-3">Settings</p>
+        <div className="bg-bg-elevated rounded-2xl overflow-hidden">
+          {/* Admin Console — only for admin users */}
+          {user?.is_admin && (
+            <Link href="/admin" className="flex items-center gap-3 px-4 py-3.5 border-b border-border-soft hover:bg-bg-raised transition-colors">
+              <div className="h-8 w-8 rounded-lg bg-gold-500/20 flex items-center justify-center">
+                <Shield size={15} className="text-gold-500" />
+              </div>
+              <span className="flex-1 text-sm text-gold-500 font-medium text-left">Admin Console</span>
+              <span className="text-[10px] text-gold-500 bg-gold-500/10 px-2 py-0.5 rounded-full">ADMIN</span>
+              <ChevronRight size={14} className="text-text-disabled" />
+            </Link>
+          )}
+
+          {/* Language toggle */}
+          <button
+            onClick={() => setLocale(locale === "th" ? "en" : "th")}
+            className="w-full flex items-center gap-3 px-4 py-3.5 border-b border-border-soft hover:bg-bg-raised transition-colors"
+          >
+            <div className="h-8 w-8 rounded-lg bg-bg-raised flex items-center justify-center">
+              <Globe size={15} className="text-text-muted" />
             </div>
-            <span className="flex-1 text-sm text-gold-500 font-medium text-left">Admin Console</span>
-            <span className="text-[10px] text-gold-500 bg-gold-500/10 px-2 py-0.5 rounded-full">ADMIN</span>
+            <span className="flex-1 text-sm text-text-primary text-left">Language</span>
+            <span className="text-xs text-text-muted font-mono bg-bg-raised px-2 py-0.5 rounded-full">
+              {locale === "th" ? "ไทย" : "EN"}
+            </span>
+            <ChevronRight size={14} className="text-text-disabled" />
+          </button>
+
+          {/* Acetone units */}
+          <Link href="/me/settings/units" className="flex items-center gap-3 px-4 py-3.5 border-b border-border-soft hover:bg-bg-raised transition-colors">
+            <div className="h-8 w-8 rounded-lg bg-blue-500/20 flex items-center justify-center">
+              <Ruler size={15} className="text-blue-400" />
+            </div>
+            <span className="flex-1 text-sm text-text-primary font-medium">Acetone units</span>
+            <span className="text-xs text-text-muted font-mono bg-bg-raised px-2 py-0.5 rounded-full">
+              {unitLabel(acUnit)}
+            </span>
             <ChevronRight size={14} className="text-text-disabled" />
           </Link>
-        )}
 
-        {/* Theme & appearance */}
-        <Link href="/me/settings/appearance" className="flex items-center gap-3 px-4 py-3.5 border-b border-border-soft hover:bg-bg-raised transition-colors">
-          <div className="h-8 w-8 rounded-lg bg-mint-500/20 flex items-center justify-center">
-            <Palette size={15} className="text-mint-500" />
-          </div>
-          <span className="flex-1 text-sm text-mint-500 font-medium">Theme & appearance</span>
-          <ChevronRight size={14} className="text-text-disabled" />
-        </Link>
-
-        {/* Acetone units */}
-        <Link href="/me/settings/units" className="flex items-center gap-3 px-4 py-3.5 border-b border-border-soft hover:bg-bg-raised transition-colors">
-          <div className="h-8 w-8 rounded-lg bg-blue-500/20 flex items-center justify-center">
-            <Ruler size={15} className="text-blue-400" />
-          </div>
-          <span className="flex-1 text-sm text-text-primary font-medium">Acetone units</span>
-          <span className="text-xs text-text-muted font-mono bg-bg-raised px-2 py-0.5 rounded-full">
-            {unitLabel(acUnit)}
-          </span>
-          <ChevronRight size={14} className="text-text-disabled" />
-        </Link>
-
-        {/* Language toggle */}
-        <button
-          onClick={() => setLocale(locale === "th" ? "en" : "th")}
-          className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-bg-raised transition-colors"
-        >
-          <div className="h-8 w-8 rounded-lg bg-bg-raised flex items-center justify-center">
-            <Globe size={15} className="text-text-muted" />
-          </div>
-          <span className="flex-1 text-sm text-text-primary text-left">Language</span>
-          <span className="text-xs text-text-muted font-mono bg-bg-raised px-2 py-0.5 rounded-full">
-            {locale === "th" ? "ไทย → EN" : "EN → ไทย"}
-          </span>
-        </button>
+          {/* Theme & appearance */}
+          <Link href="/me/settings/appearance" className="flex items-center gap-3 px-4 py-3.5 hover:bg-bg-raised transition-colors">
+            <div className="h-8 w-8 rounded-lg bg-mint-500/20 flex items-center justify-center">
+              <Palette size={15} className="text-mint-500" />
+            </div>
+            <span className="flex-1 text-sm text-mint-500 font-medium">Theme & appearance</span>
+            <ChevronRight size={14} className="text-text-disabled" />
+          </Link>
+        </div>
       </div>
 
       {/* Logout */}

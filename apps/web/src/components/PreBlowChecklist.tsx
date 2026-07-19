@@ -5,7 +5,7 @@ import { X, ChevronRight, ChevronLeft, ClipboardCheck } from "lucide-react";
 import Image from "next/image";
 
 // ─── Question schema ────────────────────────────────────────────────────────
-type QuestionKind = "single" | "multi" | "info";
+type QuestionKind = "single" | "multi" | "info" | "urine_color";
 
 interface Question {
   id: string;
@@ -16,6 +16,16 @@ interface Question {
   imageAlt?: string;
   note?: string;
 }
+
+// URS-1K color scale — mirrors URINE_BANDS in app/(app)/log/page.tsx and
+// signal_processing.URINE_KETONE_SCALE on the backend.
+const URINE_BANDS = [
+  { category: "negative", label: "Neg",      mmol: 0.0, color: "#EEE6BE", text: "#4A4023" },
+  { category: "trace",    label: "Trace",    mmol: 0.5, color: "#EBC7C0", text: "#4A2426" },
+  { category: "small",    label: "Small",    mmol: 1.5, color: "#D48EA5", text: "#FFFFFF" },
+  { category: "moderate", label: "Moderate", mmol: 4.0, color: "#9F507A", text: "#FFFFFF" },
+  { category: "large",    label: "Large",    mmol: 8.0, color: "#5A2C55", text: "#FFFFFF" },
+] as const;
 
 const QUESTIONS: Question[] = [
   {
@@ -98,11 +108,11 @@ const QUESTIONS: Question[] = [
   },
   {
     id: "urs1k_guide",
-    kind: "info",
+    kind: "urine_color",
     title: "คู่มือการใช้งานและอ่านค่าแผ่นสีตรวจคีโต URS-1K",
     imageSrc: "/urs-1k-guide.png",
     imageAlt: "URS-1K ketone strip usage and reading guide",
-    note: "อ่านคู่มือเพื่อเทียบสีให้ถูกต้อง แล้วกดเริ่มเป่าเพื่อบันทึกผลได้เลย",
+    note: "เทียบสีจากแถบตรวจกับคู่มือ แล้วเลือกค่าที่ตรงกับผลของคุณด้านล่าง",
   },
 ];
 
@@ -153,6 +163,7 @@ export function PreBlowChecklist({ onFinish, onClose }: Props) {
     step.kind === "intro" ||
     (currentQ?.kind === "info") ||
     (currentQ?.kind === "single" && typeof currentAnswer === "string") ||
+    (currentQ?.kind === "urine_color" && typeof currentAnswer === "string") ||
     (currentQ?.kind === "multi" && Array.isArray(currentAnswer) && currentAnswer.length > 0);
 
   const progress = step.kind === "intro" ? 0 : ((step.index + 1) / QUESTIONS.length) * 100;
@@ -292,6 +303,55 @@ function QuestionPanel({
         {question.note && (
           <p className="text-xs text-text-muted leading-relaxed">{question.note}</p>
         )}
+      </div>
+    );
+  }
+
+  if (question.kind === "urine_color") {
+    const selected = typeof value === "string" ? value : null;
+    return (
+      <div className="space-y-3 py-1">
+        <p className="text-sm font-semibold text-text-primary leading-snug">{question.title}</p>
+        {question.imageSrc && (
+          <div className="relative w-full aspect-[3/4] rounded-2xl overflow-hidden bg-white">
+            <Image
+              src={question.imageSrc}
+              alt={question.imageAlt ?? ""}
+              fill
+              sizes="(max-width: 480px) 100vw, 480px"
+              className="object-contain"
+            />
+          </div>
+        )}
+        {question.note && (
+          <p className="text-xs text-text-muted leading-relaxed">{question.note}</p>
+        )}
+        <div className="grid grid-cols-5 gap-1.5">
+          {URINE_BANDS.map((band) => {
+            const active = selected === band.category;
+            return (
+              <button
+                key={band.category}
+                type="button"
+                onClick={() => onChange(band.category)}
+                className={`flex flex-col items-center justify-center gap-1 rounded-xl py-3 transition-all ${
+                  active
+                    ? "ring-2 ring-mint-500 ring-offset-2 ring-offset-bg-surface scale-[1.03]"
+                    : "opacity-90 hover:opacity-100 hover:scale-[1.02]"
+                }`}
+                style={{ background: band.color, color: band.text }}
+                aria-pressed={active}
+              >
+                <span className="text-[10px] font-bold uppercase tracking-wide">
+                  {band.label}
+                </span>
+                <span className="text-[10px] font-mono opacity-90">
+                  {band.mmol.toFixed(1)}
+                </span>
+              </button>
+            );
+          })}
+        </div>
       </div>
     );
   }

@@ -18,14 +18,14 @@ export function OnboardingFigureBg({
       className={`relative overflow-hidden rounded-xl select-none ${className ?? ""}`}
       style={{
         background: [
-          // Teal glow behind head/shoulders
-          "radial-gradient(ellipse 65% 55% at 50% 28%, rgba(56,189,248,0.14) 0%, transparent 68%)",
+          // Mint glow behind head/shoulders
+          "radial-gradient(ellipse 65% 55% at 50% 28%, rgba(1,209,155,0.14) 0%, transparent 68%)",
           // Mint corner blob — bottom-left
-          "radial-gradient(ellipse 45% 38% at 10% 90%, rgba(72,199,140,0.11) 0%, transparent 60%)",
+          "radial-gradient(ellipse 45% 38% at 10% 90%, rgba(1,209,155,0.10) 0%, transparent 60%)",
           // Indigo corner blob — bottom-right
-          "radial-gradient(ellipse 38% 32% at 90% 92%, rgba(99,102,241,0.08) 0%, transparent 58%)",
-          // Dark base
-          "linear-gradient(165deg, #0d1829 0%, #060b12 100%)",
+          "radial-gradient(ellipse 38% 32% at 90% 92%, rgba(99,102,241,0.07) 0%, transparent 58%)",
+          // Navy base
+          "linear-gradient(165deg, #142552 0%, #0e1a3e 100%)",
         ].join(", "),
         ...style,
       }}

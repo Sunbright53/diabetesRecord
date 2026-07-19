@@ -418,6 +418,45 @@ async def register_mac_device(
     )
 
 
+# ─── Assign existing device to a user ────────────────────────────────────────
+
+class AssignDeviceRequest(BaseModel):
+    user_id: str
+
+@router.post("/device/{device_id}/assign", response_model=AdminDeviceOut)
+async def assign_device_to_user(
+    device_id: str,
+    body: AssignDeviceRequest,
+    _admin: User = Depends(get_admin_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """โอน device ที่มีอยู่แล้วให้ user อื่น (admin only)"""
+    try:
+        dev_uuid = UUID(device_id)
+        user_uuid = UUID(body.user_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid UUID")
+
+    device_result = await db.exec(select(Device).where(Device.id == dev_uuid))
+    device = device_result.first()
+    if not device:
+        raise HTTPException(status_code=404, detail="Device not found")
+
+    user_result = await db.exec(select(User).where(User.id == user_uuid, User.is_active == True))
+    if not user_result.first():
+        raise HTTPException(status_code=404, detail="User not found")
+
+    device.user_id = user_uuid
+    await db.commit()
+    await db.refresh(device)
+
+    return AdminDeviceOut(
+        id=str(device.id), kind=device.kind, sensor_model=device.sensor_model,
+        active=device.active, needs_recalibration=device.needs_recalibration,
+        last_calibrated_at=device.last_calibrated_at,
+    )
+
+
 # ─── Submit reading ──────────────────────────────────────────────────────────
 
 @router.post("/reading", response_model=AdminReadingOut, status_code=201)

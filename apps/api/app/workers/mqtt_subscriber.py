@@ -55,23 +55,17 @@ def _touch_heartbeat() -> None:
 
 async def process_reading(device_id_str: str, payload: dict):
     """
-    Run signal processing pipeline and persist to TimescaleDB —
-    but ONLY when a recording session is active for this device.
-    A session is a Redis key `recording:{device_id_str}` set by the API.
+    Run signal processing pipeline and persist to TimescaleDB.
+
+    Normal devices: save only when a recording session is active.
+    Shared devices (is_shared=True): always save and fan-out to ALL active users.
     """
-    # Heartbeat + gate: heartbeat lets the UI know the device is online
-    # even outside of a recording session; the gate skips the expensive
-    # save/publish path unless a session is active. Recording key value is the
-    # human-readable session_id (e.g. "sunbright1") shared by all readings in
-    # this session.
     import redis.asyncio as aioredis
     r = aioredis.from_url(settings.CELERY_BROKER_URL, decode_responses=True)
     active_session_id: Optional[str] = None
     try:
         await r.set(f"heartbeat:{device_id_str}", "1", ex=60)
         active_session_id = await r.get(f"recording:{device_id_str}")
-        if not active_session_id:
-            return
     finally:
         await r.aclose()
 
@@ -80,19 +74,17 @@ async def process_reading(device_id_str: str, payload: dict):
         device = None
         full_topic = f"metabreath/{device_id_str}/reading"
 
-        # ลองหา device จาก mqtt_topic ก่อน (ใช้กับ MAC-based devices)
         topic_result = await db.exec(
             select(Device).where(Device.mqtt_topic == full_topic, Device.active == True)
         )
         device = topic_result.first()
 
-        # Fallback: ลอง parse เป็น UUID (devices เดิม)
         if not device:
             try:
                 from uuid import UUID
-                device_uuid = UUID(device_id_str)
+                device_uuid_lookup = UUID(device_id_str)
                 uuid_result = await db.exec(
-                    select(Device).where(Device.id == device_uuid, Device.active == True)
+                    select(Device).where(Device.id == device_uuid_lookup, Device.active == True)
                 )
                 device = uuid_result.first()
             except ValueError:
@@ -102,7 +94,11 @@ async def process_reading(device_id_str: str, payload: dict):
             log.warning("Unknown or inactive device: %s — skipping", device_id_str)
             return
 
-        device_uuid = device.id  # always use the DB id regardless of lookup path
+        # Shared device: always process; normal device: require active session
+        if not device.is_shared and not active_session_id:
+            return
+
+        device_uuid = device.id
 
         cal_result = await db.exec(
             select(DeviceCalibration)
@@ -111,20 +107,13 @@ async def process_reading(device_id_str: str, payload: dict):
         )
         calibration = cal_result.first()
 
-        # Firmware payload (metabreath.ino):
-        #   sensor_voltage    (V)  — TGS1820 direct reading
-        #   baseline_voltage  (V)  — TGS1820 calibrated in clean air at boot
-        #   acetone_delta_mv  (mV) — (sensor - baseline) * 1000, computed on-chip
-        #   pressure_kpa      (kPa) — XGZP6847A breath differential pressure (0–10 kPa)
-        #   temperature       (°C) — SHT31
-        #   humidity          (%)  — SHT31
-        sensor_voltage    = payload.get("sensor_voltage")
-        baseline_voltage  = payload.get("baseline_voltage")
-        pressure_kpa      = payload.get("pressure_kpa")
-        temp_c            = payload.get("temperature")
-        humidity          = payload.get("humidity")
+        # Firmware payload (metabreath.ino)
+        sensor_voltage   = payload.get("sensor_voltage")
+        baseline_voltage = payload.get("baseline_voltage")
+        pressure_kpa     = payload.get("pressure_kpa")
+        temp_c           = payload.get("temperature")
+        humidity         = payload.get("humidity")
 
-        # Prefer server-calibrated baseline when available (overrides on-chip baseline)
         if calibration and calibration.baseline_voc:
             effective_baseline = calibration.baseline_voc
         else:
@@ -156,18 +145,31 @@ async def process_reading(device_id_str: str, payload: dict):
         confidence = r_score / 100.0
         classification = sp.classify_acetone(acetone_delta_mv, confidence)
 
-        # Attribute reading to the current session claimer, else fall back to owner.
-        reading_user_id = await resolve_reading_user(device, db)
+        now = datetime.utcnow()
 
-        # NOTE: acetone_delta is stored in **millivolts** (voltage delta from baseline),
-        #       aligned with firmware `classifyAcetone(delta_mV)` semantics.
-        #       ambient_voc = baseline_voltage (V), breath_voc = sensor_voltage (V),
-        #       pressure_mean = pressure_kpa (kPa) — reused legacy columns to avoid migration.
+        # Attribute to current session claimer; fallback to device owner
+        reading_user_id = await resolve_reading_user(device, db)
+        session_label = active_session_id or ("shared" if device.is_shared else None)
+
+        ws_payload_dict = {
+            "device_id": str(device_uuid),
+            "time": now.isoformat(),
+            "acetone_delta_mv": round(acetone_delta_mv, 4),
+            "sensor_voltage": sensor_voltage,
+            "baseline_voltage": effective_baseline,
+            "pressure_kpa": pressure_kpa,
+            "temperature": temp_c,
+            "humidity": humidity,
+            "label": classification["label"],
+            "quality_score": round(q_score, 2),
+            "confidence_score": round(confidence, 4),
+        }
+
         reading = SensorReading(
-            time=datetime.utcnow(),
+            time=now,
             device_id=device_uuid,
             user_id=reading_user_id,
-            session_id=active_session_id,
+            session_id=session_label,
             ambient_voc=baseline_voltage,
             breath_voc=sensor_voltage,
             acetone_delta=round(acetone_delta_mv, 4),
@@ -187,30 +189,16 @@ async def process_reading(device_id_str: str, payload: dict):
         db.add(reading)
 
         try:
-            import redis.asyncio as aioredis
-            r = aioredis.from_url(settings.CELERY_BROKER_URL, decode_responses=True)
-            ws_payload = json.dumps({
-                "device_id": str(device_uuid),
-                "time": reading.time.isoformat(),
-                "acetone_delta_mv": reading.acetone_delta,
-                "sensor_voltage": sensor_voltage,
-                "baseline_voltage": effective_baseline,
-                "pressure_kpa": pressure_kpa,
-                "temperature": temp_c,
-                "humidity": humidity,
-                "label": reading.label,
-                "quality_score": reading.quality_score,
-                "confidence_score": reading.confidence_score,
-            })
-            await r.publish(f"readings:{reading_user_id}", ws_payload)
-            await r.aclose()
+            r2 = aioredis.from_url(settings.CELERY_BROKER_URL, decode_responses=True)
+            await r2.publish(f"readings:{reading_user_id}", json.dumps(ws_payload_dict))
+            await r2.aclose()
         except Exception as e:
             log.debug("Redis publish failed (non-critical): %s", e)
 
         await db.commit()
 
         log.info(
-            "device=%s Δ=%.1f mV label=%s p=%.2f kPa T=%s H=%s q=%.0f",
+            "device=%s Δ=%.1f mV label=%s p=%.2f kPa T=%s H=%s q=%.0f [→ %s]",
             device_id_str[:8],
             acetone_delta_mv,
             classification["label"],
@@ -218,6 +206,7 @@ async def process_reading(device_id_str: str, payload: dict):
             "-" if temp_c is None else f"{temp_c:.1f}°C",
             "-" if humidity is None else f"{humidity:.0f}%",
             q_score,
+            str(reading_user_id)[:8],
         )
 
 

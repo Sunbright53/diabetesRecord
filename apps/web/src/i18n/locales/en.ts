@@ -108,7 +108,7 @@ export const en: Dict = {
     dob: "Date of birth",
     age: "Your age",
     ageUnit: "years",
-    sex: "Gender",
+    sex: "Adjust your plan based on your gender",
     male: "Male",
     female: "Female",
     other: "Prefer not to say",

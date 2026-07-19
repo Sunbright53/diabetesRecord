@@ -25,7 +25,7 @@ export function useThemeConfig() {
 }
 
 export const ACCENT_COLORS: Record<AccentColor, string> = {
-  mint:   "#00C896",
+  mint:   "#01D19B",
   peach:  "#FF7A4A",
   purple: "#A855F7",
   blue:   "#3B82F6",
@@ -61,7 +61,9 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   return (
     <NextThemesProvider
       attribute="data-theme"
-      defaultTheme="light"
+      themes={["system", "light", "dark"]}
+      defaultTheme="system"
+      enableSystem={false}
       disableTransitionOnChange
     >
       <ThemeContext.Provider value={{ accent, setAccent, cardStyle, setCardStyle }}>

@@ -12,6 +12,7 @@ import { useAuth } from "@/lib/auth";
 import { useT } from "@/lib/i18n";
 import { twMerge } from "tailwind-merge";
 import { BrandMark } from "@/components/brand/logo";
+import { OnboardingFigureBg } from "@/components/ui/onboarding-figure-bg";
 import { Leaf, Clock, Dumbbell, LineChart, Bell, type LucideIcon } from "lucide-react";
 
 const bodySchema = z.object({
@@ -111,48 +112,64 @@ export default function OnboardingPage() {
 
         {/* Step 0: Goal confirm */}
         {step === 0 && (
-          <div className="rounded-2xl bg-white border border-border-soft shadow-[0_4px_20px_rgba(72,199,140,0.08)] p-6 space-y-5">
-            <div className="text-center space-y-4">
-              <div className="relative inline-flex">
-                <div className="h-20 w-20 flex items-center justify-center rounded-3xl bg-gradient-to-br from-mint-400/20 via-mint-100/40 to-mint-600/10 border border-mint-200/60 shadow-[0_6px_24px_rgba(72,199,140,0.18)]">
-                  <GoalIcon size={36} className="text-mint-600" strokeWidth={1.4} />
-                </div>
-                <span className="absolute -top-1 -right-1 text-base">✨</span>
-              </div>
-              <h2 className="text-xl font-bold text-gray-900 tracking-tight leading-snug">
+          <div className="rounded-2xl border border-white/10 overflow-hidden" style={{ background: "#142552" }}>
+            {/* Hero illustration */}
+            <div className="relative">
+              <img
+                src={`/goal-${displayGoals[0] ?? goal}.webp`}
+                className="w-full object-cover"
+                style={{ height: 150 }}
+                alt=""
+                draggable={false}
+              />
+              <div
+                aria-hidden
+                className="absolute inset-0 pointer-events-none"
+                style={{ background: "radial-gradient(ellipse 80% 60% at 50% 0%, rgba(72,199,140,0.18) 0%, transparent 55%)" }}
+              />
+              <div
+                aria-hidden
+                className="absolute inset-0 pointer-events-none"
+                style={{ background: "linear-gradient(to bottom, transparent 40%, #0c1838 100%)" }}
+              />
+            </div>
+
+            {/* Content */}
+            <div className="px-5 pt-3 pb-5 space-y-4">
+              <h2 className="text-center text-xl font-bold text-white tracking-tight leading-snug">
                 {t("onboarding.tagline")}
               </h2>
-            </div>
 
-            <div className="flex flex-wrap gap-2.5 justify-center">
-              {displayGoals.map((g) => {
-                const Icon = GOAL_ICON[g] ?? LineChart;
-                return (
-                  <div
-                    key={g}
-                    className="flex items-center gap-2 rounded-2xl bg-mint-50 border-2 border-mint-300 px-4 py-2.5 shadow-[0_2px_8px_rgba(72,199,140,0.15)]"
-                  >
-                    <Icon size={18} className="text-mint-600" strokeWidth={2} />
-                    <span className="text-sm font-bold text-mint-700 tracking-tight">{t(`goal.${g}`)}</span>
-                  </div>
-                );
-              })}
-            </div>
+              <div className="flex flex-wrap gap-2 justify-center">
+                {displayGoals.map((g) => {
+                  const Icon = GOAL_ICON[g] ?? LineChart;
+                  return (
+                    <div
+                      key={g}
+                      className="flex items-center gap-2 rounded-2xl border border-mint-500/40 px-4 py-2"
+                      style={{ background: "rgba(255,255,255,0.06)" }}
+                    >
+                      <Icon size={16} className="text-mint-400" strokeWidth={2} />
+                      <span className="text-sm font-semibold text-white/90">{t(`goal.${g}`)}</span>
+                    </div>
+                  );
+                })}
+              </div>
 
-            <Button size="lg" className="w-full" onClick={() => { setSubStep(0); setStep(1); }}>
-              {t("common.next")}
-            </Button>
+              <Button size="lg" className="w-full" onClick={() => { setSubStep(0); setStep(1); }}>
+                {t("common.next")}
+              </Button>
+            </div>
           </div>
         )}
 
         {/* Step 1, subStep 0 — Drum pickers (dark card) */}
         {step === 1 && subStep === 0 && (
-          <div className="rounded-2xl bg-slate-950 border border-slate-800 overflow-hidden">
+          <div className="rounded-2xl border border-white/10 overflow-hidden" style={{ background: "#142552" }}>
             <div className="px-5 pt-5 pb-3 text-center">
               <h2 className="text-base font-bold text-white tracking-wide uppercase">
                 {t("onboarding.bodyTitle")}
               </h2>
-              <p className="text-xs text-white/45 mt-1">{t("onboarding.bodyHint")}</p>
             </div>
 
             <div className="px-4 space-y-3 pb-4">
@@ -213,13 +230,13 @@ export default function OnboardingPage() {
           const isFemale = sexVal === "female";
 
           return (
-            <div className="rounded-2xl bg-slate-950 border border-slate-800 overflow-hidden">
+            <div className="rounded-2xl border border-white/10 overflow-hidden" style={{ background: "#142552" }}>
               {/* Header */}
               <div className="px-5 pt-5 pb-3 text-center">
                 <h2 className="text-base font-bold text-white tracking-wide uppercase">
                   {t("onboarding.bodyTitle")}
                 </h2>
-                <p className="text-xs text-white/45 mt-1">{t("onboarding.sex")}</p>
+                <p className="text-xs text-white/55 mt-1 leading-relaxed">{t("onboarding.sex")}</p>
               </div>
 
               {/* Carousel viewport */}
@@ -243,7 +260,7 @@ export default function OnboardingPage() {
                 <div
                   className="absolute inset-0 flex items-end justify-center"
                   style={{
-                    background: "linear-gradient(165deg, #0d1829 0%, #060b12 100%)",
+                    background: "linear-gradient(165deg, #142552 0%, #0e1a3e 100%)",
                     transform: isFemale ? "translateX(-100%)" : "translateX(0)",
                     transition: "transform 0.35s cubic-bezier(0.25,0.46,0.45,0.94)",
                     zIndex: 1,
@@ -265,7 +282,7 @@ export default function OnboardingPage() {
                 <div
                   className="absolute inset-0 flex items-end justify-center"
                   style={{
-                    background: "linear-gradient(165deg, #0d1829 0%, #060b12 100%)",
+                    background: "linear-gradient(165deg, #142552 0%, #0e1a3e 100%)",
                     transform: isFemale ? "translateX(0)" : "translateX(100%)",
                     transition: "transform 0.35s cubic-bezier(0.25,0.46,0.45,0.94)",
                     zIndex: 1,
@@ -289,19 +306,19 @@ export default function OnboardingPage() {
                     opacity: isFemale ? 0 : 1,
                     transition: "opacity 0.25s ease",
                     cursor: "pointer",
+                    WebkitMaskImage: "linear-gradient(to right, transparent 0%, black 55%)",
+                    maskImage: "linear-gradient(to right, transparent 0%, black 55%)",
                   } as React.CSSProperties}
                   onClick={() => { setSexVal("female"); setValue("sex", "female"); }}
                 >
-                  {/* Center the full FIGURE_W image inside the narrow strip */}
+                  <div aria-hidden className="absolute inset-0"
+                    style={{ background: "linear-gradient(165deg, #142552 0%, #0e1a3e 100%)" }} />
                   <div className="absolute top-0 bottom-0 flex items-end justify-center overflow-hidden"
                     style={{ left: "50%", width: FIGURE_W, transform: "translateX(-50%)" } as React.CSSProperties}>
-                    <img src="/gender-female.png" className="pointer-events-none"
-                      style={{ height: "100%", width: "auto", flexShrink: 0, opacity: 0.55 } as React.CSSProperties}
+                    <img src="/gender-female.png" className="pointer-events-none relative z-10"
+                      style={{ height: "100%", width: "auto", flexShrink: 0, opacity: 0.7 } as React.CSSProperties}
                       draggable={false} />
                   </div>
-                  {/* Edge gradient — fades into selected panel */}
-                  <div aria-hidden className="pointer-events-none absolute inset-0"
-                    style={{ background: "linear-gradient(to right, #0a111e 0%, transparent 55%)" }} />
                 </div>
 
                 {/* ── LEFT peek strip: male (shown while female selected) ── */}
@@ -312,18 +329,19 @@ export default function OnboardingPage() {
                     opacity: isFemale ? 1 : 0,
                     transition: "opacity 0.25s ease",
                     cursor: "pointer",
+                    WebkitMaskImage: "linear-gradient(to left, transparent 0%, black 55%)",
+                    maskImage: "linear-gradient(to left, transparent 0%, black 55%)",
                   } as React.CSSProperties}
                   onClick={() => { setSexVal("male"); setValue("sex", "male"); }}
                 >
+                  <div aria-hidden className="absolute inset-0"
+                    style={{ background: "linear-gradient(165deg, #142552 0%, #0e1a3e 100%)" }} />
                   <div className="absolute top-0 bottom-0 flex items-end justify-center overflow-hidden"
                     style={{ left: "50%", width: FIGURE_W, transform: "translateX(-50%)" } as React.CSSProperties}>
-                    <img src="/gender-male.png" className="pointer-events-none"
-                      style={{ height: "100%", width: "auto", flexShrink: 0, opacity: 0.55 } as React.CSSProperties}
+                    <img src="/gender-male.png" className="pointer-events-none relative z-10"
+                      style={{ height: "100%", width: "auto", flexShrink: 0, opacity: 0.7 } as React.CSSProperties}
                       draggable={false} />
                   </div>
-                  {/* Edge gradient — fades into selected panel */}
-                  <div aria-hidden className="pointer-events-none absolute inset-0"
-                    style={{ background: "linear-gradient(to left, #0a111e 0%, transparent 55%)" }} />
                 </div>
               </div>
 
@@ -361,7 +379,7 @@ export default function OnboardingPage() {
               {/* Prefer not to say */}
               <button
                 type="button"
-                onClick={() => { setSexVal("other"); setValue("sex", "other"); }}
+                onClick={() => { setSexVal("other"); setValue("sex", "other"); setStep(2); }}
                 className={twMerge(
                   "w-full pb-5 text-center text-sm transition-colors",
                   sexVal === "other" ? "text-mint-400 font-medium" : "text-white/28 hover:text-white/50"
@@ -377,54 +395,63 @@ export default function OnboardingPage() {
         {step === 2 && (
           <form
             onSubmit={handleSubmit(finish)}
-            className="rounded-2xl bg-white border border-border-soft shadow-[0_1px_2px_rgba(20,20,20,0.03)] p-5 space-y-4"
+            className="rounded-2xl border border-white/10 overflow-hidden"
+            style={{ background: "#142552" }}
           >
-            <div className="text-center">
-              <div className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-mint-50 border border-mint-100">
-                <Bell size={22} className="text-mint-600" strokeWidth={1.4} />
+            {/* Hero — glow + title + subtitle + section label */}
+            <OnboardingFigureBg className="flex flex-col items-center justify-end pb-5 px-5 gap-3" style={{ height: 200 }}>
+              <div className="relative flex items-center justify-center mb-1">
+                <div className="absolute h-24 w-24 rounded-full border border-mint-400/8 animate-[ping_3s_ease-in-out_infinite]" />
+                <div className="absolute h-16 w-16 rounded-full border border-mint-400/12" />
+                <div className="absolute h-10 w-10 rounded-full border border-mint-400/18" />
+                <div className="h-4 w-4 rounded-full bg-mint-400/50 shadow-[0_0_18px_6px_rgba(72,199,140,0.35)]" />
               </div>
-              <h2 className="text-lg font-semibold text-gray-900 mt-3 tracking-tight">
-                {t("onboarding.doneTitle")}
-              </h2>
-              <p className="text-sm text-muted mt-1 leading-relaxed">
-                {t("onboarding.doneSubtitle")}
-              </p>
-            </div>
-
-            <div className="rounded-xl bg-mint-50 border border-mint-200/60 p-3 space-y-2">
-              <p className="text-[11px] font-bold text-mint-700 text-center uppercase tracking-widest">
+              <div className="text-center space-y-1">
+                <h2 className="text-2xl font-bold text-white tracking-tight leading-snug">
+                  {t("onboarding.doneTitle")}
+                </h2>
+                <p className="text-sm text-white/50 leading-relaxed">
+                  {t("onboarding.doneSubtitle")}
+                </p>
+              </div>
+              <p className="text-xs font-bold text-mint-400 uppercase tracking-widest">
                 {t("onboarding.tipTitle")}
               </p>
-              <div className="space-y-1.5">
+            </OnboardingFigureBg>
+
+            {/* Schedule rows + buttons */}
+            <div className="px-5 pt-4 pb-5 space-y-4">
+              <div className="space-y-2">
                 {([
                   { emoji: "🌅", key: "tipTime1" },
                   { emoji: "🍳", key: "tipTime2" },
                   { emoji: "⏱️", key: "tipTime3" },
                 ] as const).map(({ emoji, key }) => (
-                  <div key={key} className="flex items-center gap-2.5 bg-white rounded-lg px-3 py-1.5 border border-mint-100 shadow-[0_1px_3px_rgba(72,199,140,0.08)]">
-                    <span className="text-sm leading-none">{emoji}</span>
-                    <span className="text-[13px] font-medium text-gray-700">{t(`onboarding.${key}`)}</span>
+                  <div key={key} className="flex items-center gap-3.5 rounded-xl px-4 py-3.5 border border-white/6"
+                    style={{ background: "rgba(255,255,255,0.05)" }}>
+                    <span className="text-xl leading-none">{emoji}</span>
+                    <span className="text-base font-semibold text-white/90">{t(`onboarding.${key}`)}</span>
                   </div>
                 ))}
+                <p className="text-xs text-mint-400 font-medium text-center italic pt-0.5">
+                  {t("onboarding.tipFooter")}
+                </p>
               </div>
-              <p className="text-[11px] text-mint-600 font-medium text-center italic">
-                {t("onboarding.tipFooter")}
-              </p>
-            </div>
 
-            <div className="flex gap-2">
-              <Button
-                type="button"
-                variant="ghost"
-                size="lg"
-                className="flex-1"
-                onClick={() => { setStep(1); setSubStep(1); }}
-              >
-                {t("common.back")}
-              </Button>
-              <Button type="submit" size="lg" className="flex-1" disabled={saving}>
-                {saving ? t("common.saving") : t("onboarding.start")}
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="lg"
+                  className="flex-1 text-white/60 hover:text-white hover:bg-white/10"
+                  onClick={() => { setStep(1); setSubStep(1); }}
+                >
+                  {t("common.back")}
+                </Button>
+                <Button type="submit" size="lg" className="flex-1" disabled={saving}>
+                  {saving ? t("common.saving") : t("onboarding.start")}
+                </Button>
+              </div>
             </div>
           </form>
         )}
