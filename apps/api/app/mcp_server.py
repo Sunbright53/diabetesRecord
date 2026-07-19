@@ -44,24 +44,29 @@ async def get_user_profile() -> dict:
 
 
 @mcp.tool()
-async def get_recent_readings(days: int = 7, limit: int = 10) -> dict:
-    """ดึงค่า sensor ลมหายใจล่าสุด (acetone_delta, label, confidence, quality) ย้อนหลัง N วัน."""
+async def get_recent_readings(days: int = 30, limit: int = 10) -> dict:
+    """ดึงค่า sensor ลมหายใจของผู้ใช้ (acetone_delta, label, confidence, quality) ย้อนหลัง N วัน (1-90).
+
+    หา readings ทั้งหมดของ user (ผูกด้วย user_id) — ทำงานได้แม้อุปกรณ์ไม่ได้เชื่อมอยู่ตอนนี้.
+    ควรเรียก tool นี้ก่อนพูดว่า 'ไม่มีข้อมูล' เสมอ. ค่า default 30 วันเพื่อเห็น history."""
     return await chat_tools.tool_get_recent_readings(
         get_db(), await _current_user(), get_device_id(), days=days, limit=limit,
     )
 
 
 @mcp.tool()
-async def get_metabolic_trend(days: int = 7) -> dict:
-    """วิเคราะห์แนวโน้ม acetone (เพิ่ม/ลด/คงที่) ในช่วง N วัน พร้อม slope + confidence."""
+async def get_metabolic_trend(days: int = 14) -> dict:
+    """วิเคราะห์แนวโน้ม acetone (เพิ่ม/ลด/คงที่) ในช่วง N วัน (3-90) พร้อม slope + confidence.
+
+    ทำงานได้แม้อุปกรณ์ไม่ได้เชื่อมอยู่ตอนนี้ (ใช้ readings ทั้งหมดของ user)."""
     return await chat_tools.tool_get_metabolic_trend(
         get_db(), await _current_user(), get_device_id(), days=days,
     )
 
 
 @mcp.tool()
-async def get_recent_logs(days: int = 7) -> dict:
-    """ดึงบันทึกล่าสุด: มื้ออาหาร, กิจกรรม, น้ำหนัก, ketone ย้อนหลัง N วัน."""
+async def get_recent_logs(days: int = 30) -> dict:
+    """ดึงบันทึกล่าสุด: มื้ออาหาร, กิจกรรม, น้ำหนัก, ketone ย้อนหลัง N วัน (1-30)."""
     return await chat_tools.tool_get_recent_logs(get_db(), await _current_user(), days=days)
 
 

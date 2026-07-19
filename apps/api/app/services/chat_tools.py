@@ -154,24 +154,31 @@ async def tool_get_recent_readings(
     db: AsyncSession, user: User, device_id: Optional[UUID],
     days: int = 7, limit: int = 10,
 ) -> dict:
-    days = max(1, min(days, 30))
+    days = max(1, min(days, 90))
     limit = max(1, min(limit, 50))
     dev = await _pick_device_id(db, user, device_id)
-    if not dev:
-        return {"error": "ไม่พบอุปกรณ์ของผู้ใช้"}
     since = datetime.utcnow() - timedelta(days=days)
-    res = await db.exec(
+
+    # Always scope by user_id (attribution). Filter by device_id ONLY if we
+    # have one — this way historical readings surface even if the user's
+    # device is currently disconnected or the shared-device session lapsed.
+    stmt = (
         select(SensorReading)
         .where(
             SensorReading.user_id == user.id,
-            SensorReading.device_id == dev,
             SensorReading.time >= since,
         )
         .order_by(SensorReading.time.desc())
     )
+    if dev:
+        stmt = stmt.where(SensorReading.device_id == dev)
+
+    res = await db.exec(stmt)
     rows = res.all()[:limit]
+
     return {
-        "device_id": str(dev),
+        "device_id": str(dev) if dev else None,
+        "device_currently_connected": dev is not None,
         "n_readings": len(rows),
         "window_days": days,
         "readings": [
@@ -190,20 +197,22 @@ async def tool_get_recent_readings(
 async def tool_get_metabolic_trend(
     db: AsyncSession, user: User, device_id: Optional[UUID], days: int = 7,
 ) -> dict:
-    days = max(3, min(days, 30))
+    days = max(3, min(days, 90))
     dev = await _pick_device_id(db, user, device_id)
-    if not dev:
-        return {"error": "ไม่พบอุปกรณ์ของผู้ใช้"}
     since = datetime.utcnow() - timedelta(days=days)
-    res = await db.exec(
+
+    stmt = (
         select(SensorReading)
         .where(
             SensorReading.user_id == user.id,
-            SensorReading.device_id == dev,
             SensorReading.time >= since,
         )
         .order_by(SensorReading.time)
     )
+    if dev:
+        stmt = stmt.where(SensorReading.device_id == dev)
+
+    res = await db.exec(stmt)
     readings = res.all()
     dicts = [
         {"time": r.time, "acetone_delta": r.acetone_delta}
@@ -212,7 +221,8 @@ async def tool_get_metabolic_trend(
     ]
     trend = ml_inference.predict_trend(dicts, horizon_days=days)
     return {
-        "device_id": str(dev),
+        "device_id": str(dev) if dev else None,
+        "device_currently_connected": dev is not None,
         "window_days": days,
         "n_readings_used": len(dicts),
         "trend_direction": trend.get("trend_direction"),
